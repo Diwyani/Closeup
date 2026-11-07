@@ -95,6 +95,13 @@ Closeup/
   UI/          Recorder, editor, timeline and settings panel
 ```
 
+## Contributing
+
+Fork it, change it, make it yours. If you fix a bug or build something others would like, send a pull request and I'll review it.
+
+- **Found a bug or have an idea?** [Open an issue](../../issues/new/choose).
+- **Want to contribute code?** Read the [contributing guide](CONTRIBUTING.md) first. It covers forking, branches, the testing checklist and what I look for in a review.
+
 ## Credits
 
 Designed and directed by Diwyani Vajpayee. Built with [Claude Code](https://claude.com/claude-code) (Claude Opus 5.5).
