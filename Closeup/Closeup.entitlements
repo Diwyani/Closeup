@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	Not sandboxed: like Screen Studio, Closeup writes straight into ~/Movies
+	and registers a global hotkey. Screen Recording access is granted by the user
+	in System Settings (there is no entitlement or Info.plist key for it), and
+	it also covers system audio.
+
+	The hardened runtime blocks the camera and microphone unless these are set.
+	macOS still asks the user, using NSCameraUsageDescription and
+	NSMicrophoneUsageDescription from Info.plist.
+	-->
+	<key>com.apple.security.app-sandbox</key>
+	<false/>
+	<key>com.apple.security.device.camera</key>
+	<true/>
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+</dict>
+</plist>
