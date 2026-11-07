@@ -7,6 +7,16 @@
 <p align="center">A screen recorder for macOS that turns raw recordings into polished demo videos.<br>
 Smooth auto zoom, a tidy cursor, your face, captions — no editing skills needed.</p>
 
+<p align="center">
+  <a href="#run-it">Run it</a> ·
+  <a href="#how-to-use">How to use</a> ·
+  <a href="#how-it-decides">How it decides</a> ·
+  <a href="#limitations">Limitations</a> ·
+  <a href="CONTRIBUTING.md"><b>Contribute</b></a>
+</p>
+
+<p align="center">Open source and free. Fork it, or <a href="CONTRIBUTING.md">send a pull request</a> — I review every one.</p>
+
 <!-- Add your demo video or GIF here -->
 
 ## Features
@@ -50,6 +60,13 @@ Closeup is an early personal project. Right now:
 - **Voice cleanup** uses Apple's voice isolation when your Mac has it, and falls back to simpler noise reduction otherwise.
 - **Smart edits** use your mouse, keyboard and voice, not what's on screen. A silent wait where something important is loading may be sped up, so check the timeline before exporting.
 - **Tested on one Mac** (Apple silicon, macOS 26). If something breaks on yours, please open an issue.
+
+## Contributing
+
+Fork it, change it, make it yours. If you fix a bug or build something others would like, send a pull request and I'll review it.
+
+- **Found a bug or have an idea?** [Open an issue](../../issues/new/choose).
+- **Want to contribute code?** Read the [contributing guide](CONTRIBUTING.md) first. It covers forking, branches, the testing checklist and what I look for in a review.
 
 ## Permissions
 
@@ -215,13 +232,6 @@ Closeup/
   Export/      MP4 export
   UI/          Recorder, editor, timeline and settings panel
 ```
-
-## Contributing
-
-Fork it, change it, make it yours. If you fix a bug or build something others would like, send a pull request and I'll review it.
-
-- **Found a bug or have an idea?** [Open an issue](../../issues/new/choose).
-- **Want to contribute code?** Read the [contributing guide](CONTRIBUTING.md) first. It covers forking, branches, the testing checklist and what I look for in a review.
 
 ## Credits
 
