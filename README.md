@@ -40,6 +40,17 @@ Everything runs on your Mac. No account, no uploads, no third-party code: it's b
 3. Select the **Closeup** target → **Signing & Capabilities** → choose your own **Team**. A free Apple ID works.
 4. Press **⌘R** to build and run.
 
+## Limitations
+
+Closeup is an early personal project. Right now:
+
+- **No download yet.** There's no ready-to-open app. You need a Mac with Xcode to build it yourself (the steps above take a few minutes). A signed, notarized download needs a paid Apple Developer account, which may come later.
+- **Mac only.** It's built on macOS frameworks, so it won't run on Windows, Linux or iPad.
+- **Captions** work best on macOS 26. On older versions they need Siri or Dictation turned on in System Settings.
+- **Voice cleanup** uses Apple's voice isolation when your Mac has it, and falls back to simpler noise reduction otherwise.
+- **Smart edits** use your mouse, keyboard and voice, not what's on screen. A silent wait where something important is loading may be sped up, so check the timeline before exporting.
+- **Tested on one Mac** (Apple silicon, macOS 26). If something breaks on yours, please open an issue.
+
 ## Permissions
 
 macOS asks for these the first time they're needed:
