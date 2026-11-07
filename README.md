@@ -76,12 +76,133 @@ Recordings are kept in `~/Movies/Closeup`, one folder per recording. Your origin
 
 ## How it decides
 
+Everything Closeup does automatically, and the rules behind it. Sizes in px are on a 1080p canvas and scale with the export size. Anything you edit by hand replaces the automatic version, and **Reset** brings it back.
+
+### Recording
+
 | | Rule |
 |---|---|
-| **Zoom** | On each click or bout of typing. Starts 0.5 s early and holds 1.5 s after. Actions under 3 s apart share one zoom. Pans only when the cursor leaves the middle 55% of the view. |
-| **Speed up** | Waits of 3 s or more with no input and no talking. 0.75 s of normal speed is kept on each side. |
-| **Cut** | Pauses from 1.5 s (adjustable) with no input and no talking. 0.3 s is kept on each side. |
-| **Trim** | From 0.5 s before the first click, keystroke or word to 1 s after the last. |
+| **Screen** | 60 fps at the display's full resolution, saved as HEVC. Captured in the encoder's own colour format, so frames go straight to the hardware encoder. |
+| **Real cursor** | Left out of the video and logged separately (position, clicks, shape), so it can be redrawn smoothly later. |
+| **Typing** | Closeup notes *that* you typed, checked every 0.1 s. It never records *which* keys. |
+| **Cursor shape** | Checked every 0.1 s (arrow, text beam, hand…), so the redrawn cursor matches. |
+| **Camera** | 720p, H.264. It starts during the countdown so exposure has settled before recording begins. |
+| **Sync** | Screen, camera, mic, system audio and cursor all use the Mac's one system clock. Anything that started early is trimmed to match the screen. |
+| **Own windows** | The countdown, camera preview and Closeup's own windows are left out of display recordings. |
+| **Memory guard** | If Closeup ever uses more than 2 GB while recording, it drops frames instead of piling them up, so it never freezes your Mac. |
+| **Countdown** | 3, 2, 1, then recording starts. |
+
+### Zoom
+
+| | Rule |
+|---|---|
+| **What triggers a zoom** | Every click. Also typing, if "Zoom while typing" is on. |
+| **Where typing zooms** | Where you last clicked, if that was within 10 s (usually the text field), otherwise the cursor. Typing in the last 1 s of the recording is ignored, since that's the stop shortcut. |
+| **Start and end** | Starts zooming 0.5 s before the first action. Holds 1.5 s after the last. |
+| **One zoom or several** | Actions under 3 s apart keep the same zoom going. Zooms under 1 s apart join, so it never zooms out and straight back in. |
+| **How close** | 2× by default ("Zoom level", 1.25–3.5×). Each zoom can have its own level. |
+| **Movement** | Spring motion with no overshoot, simulated 120 times a second. Zoom settles at about 0.9 cycles a second, panning at about 0.8, both scaled by "Speed". |
+| **Following** | Zoomed out, it follows the cursor freely. Zoomed in, it only pans when the cursor (or typing spot) leaves the middle 55% of the view. |
+| **Typing focus** | If you typed in the last 1 s, it looks at where you're typing, not at the mouse. |
+| **Edges** | It never shows past the edge of the screen. |
+
+### Cursor
+
+| | Rule |
+|---|---|
+| **Smoothing** | Position is sampled 120 times a second, then blurred over up to 80 ms in both directions ("Smoothing"). This removes jitter without making the cursor lag. |
+| **Size** | 1.5× by default. It grows with the zoom, like the screen under it. |
+| **Hide when idle** | Fades out after 1.5 s without movement, over 0.4 s. Comes back as soon as you move. |
+| **Click press** | Shrinks 20% on each click and eases back over 0.25 s. |
+| **Click glow** | A soft white glow grows and fades over 0.45 s. |
+| **Motion blur** | Blur along the direction of travel: half the distance moved per frame, up to 24 px. None when it's slow. |
+| **Off screen** | Hidden when the cursor is outside the recorded area (another display, or outside the window). |
+
+### Speech detection
+
+Used so automatic edits never cut you off.
+
+| | Rule |
+|---|---|
+| **Listening** | The mic recording is measured in 30 ms slices. |
+| **Room level** | The quietest 10% of slices is taken as the room's background noise. |
+| **Speech** | Anything at least 12 dB louder than the room (and above −50 dB). |
+| **Smoothing** | Gaps under 0.35 s between words count as one stretch. Blips under 0.15 s are ignored. 0.15 s is added on each side. |
+
+### Speed-ups and cuts
+
+| | Rule |
+|---|---|
+| **Busy** | Mouse movement (more than 1 point), clicks, typing, or speech. Anything busy is never sped up or cut. |
+| **Speed up** ("Speed up long waits") | Quiet gaps of 3 s or more. 0.75 s of normal speed is kept on each side, and only gaps that still leave at least 1 s are sped up. 4× by default (2–10×). Voices keep their normal pitch. |
+| **Cut** ("Cut pauses") | Quiet gaps from 1.5 s (0.8–3 s) up to 3 s. With speed-ups off, any quiet gap that long. 0.3 s is kept on each side. |
+| **Why both** | Long waits are sped up rather than cut, so you still see what changed on screen (a page loading, for example). |
+| **Hand edits** | Once you add, move or delete a cut or speed-up yourself, the automatic ones stop until you click **Reset edits**. |
+
+### Auto-trim
+
+| | Rule |
+|---|---|
+| **Start** | 0.5 s before your first click, keystroke or word. |
+| **End** | 1 s after your last one. The final 1.5 s is ignored, since that's you reaching for Stop. |
+| **When** | Only when you click **Auto-trim start & end**. You can still drag the yellow handles afterwards. |
+
+### Captions
+
+| | Rule |
+|---|---|
+| **Engine** | Apple's on-device speech recognition. On macOS 26 it uses the newer engine, which needs no Siri or Dictation. Nothing is uploaded. |
+| **Language** | Your Mac's language, or English if that isn't supported. |
+| **New line** | A new caption starts after a pause of more than 0.6 s, after 3 s, after 7 words, or at the end of a sentence. |
+| **Timing** | A caption stays 0.2 s after its last word, but never overlaps the next one. |
+| **Placement** | Bottom centre, 7% up from the bottom, up to 80% of the width, wrapping to more lines if needed. White text on a dark rounded box, in the system font. |
+
+### Camera and layouts
+
+| | Rule |
+|---|---|
+| **Bubble** | Bottom-right by default, 24% of the video's short side (12–65%), 40 px from the edges. Mirrored by default. |
+| **Shapes** | Circle and square are 1:1, tall is 4:5, wide is 4:3. Non-circle corners are 18% rounded by default. |
+| **Picture** | The camera image is cropped to fill the shape, never stretched. |
+| **Camera only** | The camera fills the padded area with the frame's rounded corners. |
+| **Side by side** | In wide videos the screen takes 64% and the camera the rest, side by side. In tall videos it's 50/50, screen on top. 24 px gap. |
+| **Screen only** | The camera fades out. |
+| **Switching** | Layouts blend over 0.45 s with an ease-in-out curve, starting just before the block on the timeline. |
+| **New block** | 3 s of "Camera only" at the playhead. |
+
+### Text titles
+
+| | Rule |
+|---|---|
+| **New title** | 3 s long, at the top, at the playhead. |
+| **Position** | Top (8% from the top), middle, or bottom (18% from the bottom, above captions). |
+| **Look** | Bold system font, white, with a soft shadow, or on a dark box ("Background box"). Up to 85% of the width. |
+| **Fade** | In and out over 0.25 s. |
+
+### Voice cleanup
+
+| Step | Rule |
+|---|---|
+| **1. Noise removal** | Apple's Sound Isolation (the tech behind FaceTime's Voice Isolation). Skipped on Macs that don't have it. |
+| **2. Rumble** | Removes everything below 80 Hz (desk bumps, fans, air conditioning). |
+| **3. Between words** | Quiets sound below −55 dB at 2:1, so room noise drops when you're not talking. |
+| **4. Evening out** | Gently compresses above −24 dB, so loud and soft words are closer in volume. |
+| **5. Loudness** | Measures your speech (ignoring anything below −45 dB) and sets it to −19 dB, about −16 LUFS, the level YouTube and podcasts use. Gain is limited to between −12 and +24 dB. |
+| **6. Peaks** | A soft limiter rounds off anything above −2 dB, so it never clips. |
+
+The original microphone file is kept; the cleaned copy is saved next to it as `microphone-clean.m4a`.
+
+### Export
+
+| | Rule |
+|---|---|
+| **Frame rate** | A steady 60 fps, even where the screen didn't change, so zooms and the cursor never stutter. |
+| **Size** | The short side is 1080 or 2160 px, and the long side follows the shape (16:9, 9:16, 1:1, 4:3). |
+| **Quality** | H.264 at 20 Mbps (1080p) or 60 Mbps (4K), with AAC audio, in an MP4. |
+| **Colour** | Tagged as Rec. 709, so colours match on YouTube, Twitter and phones. |
+| **Sharpness** | High-quality (Lanczos) downscaling, so small text stays crisp. |
+| **Same look at every size** | Everything is designed on a 1080p canvas and scaled, so 4K and vertical exports match the preview. |
+| **Edits** | Trim, cuts and speed-ups are applied. The original recording is never changed. |
 
 ## Project structure
 
