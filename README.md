@@ -5,7 +5,7 @@
 <h1 align="center">Closeup</h1>
 
 <p align="center">A screen recorder for macOS that turns raw recordings into polished demo videos.<br>
-Smooth auto zoom, a tidy cursor, your face, captions — no editing skills needed.</p>
+Smooth auto zoom, a tidy cursor, your face, captions. No editing skills needed.</p>
 
 <p align="center">
   <a href="#run-it">Run it</a> ·
@@ -15,7 +15,7 @@ Smooth auto zoom, a tidy cursor, your face, captions — no editing skills neede
   <a href="CONTRIBUTING.md"><b>Contribute</b></a>
 </p>
 
-<p align="center">Open source and free. Fork it, or <a href="CONTRIBUTING.md">send a pull request</a> — I review every one.</p>
+<p align="center">Open source and free. Fork it, or <a href="CONTRIBUTING.md">send a pull request</a>. I review every one.</p>
 
 <!-- Add your demo video or GIF here -->
 
@@ -38,7 +38,7 @@ Everything runs on your Mac. No account, no uploads, no third-party code: it's b
 ## Requirements
 
 - macOS 14 or later (captions work best on macOS 26)
-- Xcode 26 or later — free on the Mac App Store
+- Xcode 26 or later (free on the Mac App Store)
 
 ## Run it
 
@@ -93,7 +93,7 @@ Recordings are kept in `~/Movies/Closeup`, one folder per recording. Your origin
 
 ## How it decides
 
-Everything Closeup does automatically, and the rules behind it. Sizes in px are on a 1080p canvas and scale with the export size. Anything you edit by hand replaces the automatic version, and **Reset** brings it back.
+Everything Closeup does automatically, and the rules behind it. For a one-screen summary, see [HOW-IT-DECIDES.md](HOW-IT-DECIDES.md). Sizes in px are on a 1080p canvas and scale with the export size. Anything you edit by hand replaces the automatic version, and **Reset** brings it back.
 
 ### Recording
 
