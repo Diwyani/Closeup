@@ -47,6 +47,10 @@ final class AppState {
     var selectedMicrophoneID = UserDefaults.standard.string(forKey: "microphoneID") {
         didSet { UserDefaults.standard.set(selectedMicrophoneID, forKey: "microphoneID") }
     }
+    /// Record Closeup's own windows too (the countdown and camera preview stay hidden).
+    var includesCloseup = UserDefaults.standard.bool(forKey: "includesCloseup") {
+        didSet { UserDefaults.standard.set(includesCloseup, forKey: "includesCloseup") }
+    }
     var recordsSystemAudio = UserDefaults.standard.bool(forKey: "recordsSystemAudio") {
         didSet { UserDefaults.standard.set(recordsSystemAudio, forKey: "recordsSystemAudio") }
     }
@@ -216,7 +220,8 @@ final class AppState {
                 try await session.prepare()
                 if Task.isCancelled { return }
 
-                hideMainWindow()
+                // Out of the way, unless you're filming Closeup itself.
+                if !includesCloseup { hideMainWindow() }
                 if session.hasCamera {
                     let preview = cameraPreview
                     preview.show(on: target.screen)
@@ -262,7 +267,9 @@ final class AppState {
     private func makeTarget() -> CaptureTarget? {
         switch selection {
         case .display(let id):
-            sources.displays.first { $0.id == id }.map { .display($0, excluding: sources.ownApplication) }
+            sources.displays.first { $0.id == id }.map {
+                .display($0, excluding: sources.ownApplication, keeping: includesCloseup ? sources.ownWindows : [])
+            }
         case .window(let id):
             sources.windows.first { $0.id == id }.map { .window($0) }
         case nil:

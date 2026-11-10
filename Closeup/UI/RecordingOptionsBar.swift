@@ -35,6 +35,11 @@ struct RecordingOptionsBar: View {
             }
             .help("Record what your Mac plays")
 
+            Toggle(isOn: $appState.includesCloseup) {
+                Label("Include Closeup", systemImage: "macwindow")
+            }
+            .help("Record Closeup's own window too, to film a walkthrough. The countdown and camera preview stay hidden.")
+
             Spacer()
         }
         .padding(.horizontal, 16)

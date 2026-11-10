@@ -53,6 +53,14 @@ struct EditorTimeline: View {
                 .font(.callout.monospacedDigit())
                 .foregroundStyle(.secondary)
             Spacer()
+            Button { model.undo() } label: { Image(systemName: "arrow.uturn.backward") }
+                .keyboardShortcut("z", modifiers: .command)
+                .disabled(!model.canUndo)
+                .help("Undo (⌘Z)")
+            Button { model.redo() } label: { Image(systemName: "arrow.uturn.forward") }
+                .keyboardShortcut("z", modifiers: [.command, .shift])
+                .disabled(!model.canRedo)
+                .help("Redo (⇧⌘Z)")
             if model.zoomsAreEdited { Button("Reset zooms") { model.resetZooms() }.buttonStyle(.link) }
             if model.editsAreCustom { Button("Reset edits") { model.resetEdits() }.buttonStyle(.link) }
             Button { model.addZoom(at: model.currentTime) } label: { Label("Zoom", systemImage: "plus.magnifyingglass") }

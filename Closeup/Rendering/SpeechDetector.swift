@@ -61,8 +61,14 @@ enum SpeechDetector {
                 merged.append(range)
             }
         }
+        // A stretch can land entirely before the video starts (the mic starts
+        // first), so drop those rather than make a backwards range.
         return merged
             .filter { $0.upperBound - $0.lowerBound >= minimum }
-            .map { max(0, $0.lowerBound - padding + offset)...($0.upperBound + padding + offset) }
+            .compactMap { range in
+                let start = max(0, range.lowerBound - padding + offset)
+                let end = range.upperBound + padding + offset
+                return end > start ? start...end : nil
+            }
     }
 }

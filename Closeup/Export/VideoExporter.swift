@@ -1,5 +1,31 @@
 import AVFoundation
 
+/// One-click shape and size for where the video will be posted.
+enum ExportPreset: String, CaseIterable, Identifiable {
+    case youtube, x, linkedIn, vertical
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .youtube: "YouTube · 16:9, 4K"
+        case .x: "X · 16:9, 1080p"
+        case .linkedIn: "LinkedIn · 1:1, 1080p"
+        case .vertical: "Shorts, Reels, TikTok · 9:16, 1080p"
+        }
+    }
+
+    var aspect: ExportStyle.Aspect {
+        switch self {
+        case .youtube, .x: .wide
+        case .linkedIn: .square
+        case .vertical: .vertical
+        }
+    }
+
+    var resolution: ExportResolution { self == .youtube ? .uhd4K : .hd1080 }
+}
+
 enum ExportResolution: String, CaseIterable, Identifiable, Sendable {
     case hd1080 = "1080p"
     case uhd4K = "4K"

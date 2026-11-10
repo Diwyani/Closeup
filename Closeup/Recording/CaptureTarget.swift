@@ -21,13 +21,16 @@ struct CaptureTarget {
     var pixelWidth: Int { Int(frame.width * scale) & ~1 }
     var pixelHeight: Int { Int(frame.height * scale) & ~1 }
 
-    static func display(_ source: DisplaySource, excluding ownApp: SCRunningApplication?) -> CaptureTarget {
+    /// `keeping`: our own windows to record anyway (to film Closeup itself).
+    static func display(
+        _ source: DisplaySource, excluding ownApp: SCRunningApplication?, keeping: [SCWindow] = []
+    ) -> CaptureTarget {
         // Excluding our whole app (not just today's windows) also hides windows
-        // we open later, like the countdown.
+        // we open later, like the countdown and the camera preview.
         let filter = SCContentFilter(
             display: source.display,
             excludingApplications: ownApp.map { [$0] } ?? [],
-            exceptingWindows: [])
+            exceptingWindows: keeping)
         return CaptureTarget(
             kind: .display, name: source.name, filter: filter,
             frame: source.display.frame, scale: CGFloat(filter.pointPixelScale),

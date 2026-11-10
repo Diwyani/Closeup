@@ -1,3 +1,4 @@
+import AppKit
 import AVFoundation
 import Observation
 
@@ -37,6 +38,20 @@ final class ProjectEditorModel {
     private(set) var captionError: String?
     private(set) var isCleaningAudio = false
     private(set) var audioError: String?
+
+    /// The current frame redrawn with new settings while paused. Shown over
+    /// the player, so changes appear instantly instead of waiting for a seek.
+    private(set) var stillFrame: CGImage?
+    @ObservationIgnored private var isRenderingStill = false
+    @ObservationIgnored private var stillIsStale = false
+
+    /// Earlier versions of the settings, for ⌘Z.
+    private var undoStack: [ExportStyle] = []
+    private var redoStack: [ExportStyle] = []
+    @ObservationIgnored private var lastUndoMark = Date.distantPast
+    @ObservationIgnored private var isRestoringStyle = false
+    var canUndo: Bool { !undoStack.isEmpty }
+    var canRedo: Bool { !redoStack.isEmpty }
 
     /// 0…1 while exporting, nil otherwise.
     private(set) var exportProgress: Double?
@@ -105,6 +120,7 @@ final class ProjectEditorModel {
     // MARK: Style
 
     private func styleDidChange(from old: ExportStyle) {
+        if !isRestoringStyle { recordUndo(old) }
         defer { scheduleSave() }
         if style.cleansAudio != old.cleansAudio {
             Task { await applyAudioCleanup() }
@@ -131,6 +147,7 @@ final class ProjectEditorModel {
             || style.autoZoom != old.autoZoom
             || style.zoomLevel != old.zoomLevel
             || style.zoomOnTyping != old.zoomOnTyping
+            || style.typingZoomLevel != old.typingZoomLevel
             || style.zoomSpeed != old.zoomSpeed
             || style.zoomSegments != old.zoomSegments {
             rebuildTracks()
@@ -145,7 +162,8 @@ final class ProjectEditorModel {
         if style.autoZoom {
             let activities = ZoomPlanner.activities(from: cursorLog, duration: duration, includeTyping: style.zoomOnTyping)
             zoomSegments = style.zoomSegments
-                ?? ZoomPlanner.segments(for: activities, duration: duration, scale: style.zoomLevel)
+                ?? ZoomPlanner.segments(
+                    for: activities, duration: duration, scale: style.zoomLevel, typingScale: style.typingZoomLevel)
             cameraTrack = CameraTrack(
                 segments: zoomSegments, activities: activities, cursor: cursorTrack,
                 screenSize: CGSize(width: cursorLog.width, height: cursorLog.height),
@@ -160,13 +178,72 @@ final class ProjectEditorModel {
     private func updateCompositor() {
         liveCompositor.current = FrameCompositor(
             style: style, cursor: cursorTrack, camera: cameraTrack, sprites: sprites,
-            sourceScale: cursorLog.scale, timeMap: timeMap)
+            sourceScale: cursorLog.scale, timeMap: timeMap, assetFolder: project.folder)
 
-        // A paused player doesn't redraw by itself; seeking in place makes it
-        // render the current frame again with the new settings.
+        // A paused player doesn't redraw by itself. Redraw the last frame
+        // ourselves: instant, unlike seeking (which decodes video again).
         if player.rate == 0 {
-            player.seek(to: player.currentTime(), toleranceBefore: .zero, toleranceAfter: .zero)
+            if liveCompositor.lastFrame != nil {
+                renderStill()
+            } else {
+                player.seek(to: player.currentTime(), toleranceBefore: .zero, toleranceAfter: .zero)
+            }
         }
+    }
+
+    /// One redraw at a time; if settings change meanwhile, one more after it.
+    private func renderStill() {
+        guard let frame = liveCompositor.lastFrame else { return }
+        guard !isRenderingStill else {
+            stillIsStale = true
+            return
+        }
+        isRenderingStill = true
+        let compositor = liveCompositor
+        let size = previewSize
+        Task {
+            let image = await Task.detached(priority: .userInitiated) {
+                compositor.still(of: frame, canvas: size)
+            }.value
+            isRenderingStill = false
+            if player.rate == 0 { stillFrame = image }
+            if stillIsStale {
+                stillIsStale = false
+                renderStill()
+            }
+        }
+    }
+
+    // MARK: Undo
+
+    /// Quick successive changes (a slider drag) undo as one step.
+    private func recordUndo(_ old: ExportStyle) {
+        if Date.now.timeIntervalSince(lastUndoMark) > 0.6 || undoStack.isEmpty {
+            undoStack.append(old)
+            if undoStack.count > 200 { undoStack.removeFirst() }
+        }
+        lastUndoMark = .now
+        redoStack.removeAll()
+    }
+
+    func undo() {
+        guard let previous = undoStack.popLast() else { return }
+        redoStack.append(style)
+        restore(previous)
+    }
+
+    func redo() {
+        guard let next = redoStack.popLast() else { return }
+        undoStack.append(style)
+        restore(next)
+    }
+
+    private func restore(_ saved: ExportStyle) {
+        isRestoringStyle = true
+        style = saved
+        isRestoringStyle = false
+        lastUndoMark = .distantPast
+        selectedID = nil
     }
 
     // MARK: Timeline: cuts & speed-ups
@@ -205,6 +282,7 @@ final class ProjectEditorModel {
         item.videoComposition = built.videoComposition
         item.audioMix = built.audioMix(microphoneVolume: style.microphoneVolume, systemVolume: style.systemVolume)
         item.audioTimePitchAlgorithm = .spectral  // sped-up voices keep their pitch
+        stillFrame = nil
         player.replaceCurrentItem(with: item)
         applyTrim()
         seek(to: resumeAt)
@@ -217,16 +295,36 @@ final class ProjectEditorModel {
         let url = project.folder.appending(path: microphone.file)
         Task {
             speechRanges = await SpeechDetector.speech(in: url, offset: microphone.offset)
+            if style.autoTrim {
+                // Speech can move the trim; not a change worth undoing.
+                isRestoringStyle = true
+                applyAutoTrim()
+                isRestoringStyle = false
+            }
             if !editsAreCustom, style.speedUpIdle || style.cutsSilence { rebuildTimeline() }
         }
     }
 
-    /// Trims away the dead time before your first action or word and after your last.
-    func autoTrim() {
+    /// On: trims away the dead time before your first action or word and
+    /// after your last. Off: back to the whole recording.
+    func setAutoTrim(_ on: Bool) {
+        var changed = style
+        changed.autoTrim = on
+        if !on {
+            changed.trimStart = 0
+            changed.trimEnd = nil
+        }
+        style = changed
+        if on { applyAutoTrim() }
+        seek(to: trimStart)
+    }
+
+    private func applyAutoTrim() {
         let range = AutoEditPlanner.trim(from: cursorLog, speech: speechRanges, duration: duration)
-        style.trimStart = range.lowerBound
-        style.trimEnd = range.upperBound
-        seek(to: range.lowerBound)
+        var changed = style
+        changed.trimStart = range.lowerBound
+        changed.trimEnd = range.upperBound
+        style = changed
     }
 
     var editsAreCustom: Bool { style.timeEdits != nil }
@@ -324,6 +422,51 @@ final class ProjectEditorModel {
         style.textOverlays = overlays.sorted { $0.start < $1.start }
     }
 
+    // MARK: Background picture
+
+    private(set) var backgroundError: String?
+    @ObservationIgnored private var thumbnailCache: (name: String, image: NSImage)?
+
+    /// A small copy of the background picture for the settings panel.
+    var backgroundThumbnail: NSImage? {
+        guard let name = style.backgroundImage else { return nil }
+        if let cached = thumbnailCache, cached.name == name { return cached.image }
+        let url = project.folder.appending(path: name)
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                  kCGImageSourceCreateThumbnailFromImageAlways: true,
+                  kCGImageSourceThumbnailMaxPixelSize: 600,
+              ] as CFDictionary)
+        else { return nil }
+        let thumbnail = NSImage(cgImage: image, size: .zero)
+        thumbnailCache = (name, thumbnail)
+        return thumbnail
+    }
+
+    /// Copies the picture into the recording's folder and uses it.
+    func useBackgroundImage(_ url: URL) {
+        backgroundError = nil
+        do {
+            let name = try BackgroundImage.importImage(from: url, into: project.folder)
+            if let old = style.backgroundImage { try? FileManager.default.removeItem(at: project.folder.appending(path: old)) }
+            var changed = style
+            changed.backgroundImage = name
+            changed.backgroundKind = .image
+            style = changed
+        } catch {
+            backgroundError = "Couldn't use that picture. Try a JPEG, PNG or HEIC."
+        }
+    }
+
+    func useDesktopWallpaper() {
+        guard let screen = NSScreen.main, let url = NSWorkspace.shared.desktopImageURL(for: screen) else {
+            backgroundError = "Couldn't find your wallpaper."
+            return
+        }
+        useBackgroundImage(url)
+        if backgroundError != nil { backgroundError = "Your wallpaper can't be used (moving wallpapers aren't supported). Choose a picture instead." }
+    }
+
     // MARK: Captions
 
     var captions: [Caption] { style.captions ?? [] }
@@ -397,12 +540,15 @@ final class ProjectEditorModel {
     var trimStart: Double { style.trimStart }
     var trimEnd: Double { style.trimEnd ?? duration }
 
+    /// Dragging a handle is your own trim, so auto-trim switches off.
     func setTrimStart(_ time: Double) {
+        style.autoTrim = false
         style.trimStart = min(max(0, time), trimEnd - 0.5)
         seek(to: style.trimStart)
     }
 
     func setTrimEnd(_ time: Double) {
+        style.autoTrim = false
         style.trimEnd = max(min(duration, time), trimStart + 0.5)
         seek(to: trimEnd)
     }
@@ -421,6 +567,7 @@ final class ProjectEditorModel {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.currentTime = self.timeMap.source(at: time.seconds)
+                if self.player.rate > 0 { self.stillFrame = nil }
                 // Pressing play before the trimmed start jumps to it.
                 if self.player.rate > 0, self.currentTime < self.trimStart - 0.05 { self.seek(to: self.trimStart) }
             }
@@ -429,6 +576,7 @@ final class ProjectEditorModel {
 
     /// Jumps to a moment in recording time.
     func seek(to seconds: Double) {
+        stillFrame = nil
         player.seek(
             to: CMTime(seconds: timeMap.output(at: seconds), preferredTimescale: 600),
             toleranceBefore: .zero, toleranceAfter: .zero)

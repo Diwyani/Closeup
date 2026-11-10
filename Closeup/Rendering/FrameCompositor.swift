@@ -26,6 +26,8 @@ struct FrameCompositor: Sendable {
     /// Cuts and speed-ups: turns the edited video's time back into recording
     /// time, which the cursor and camera tracks use.
     var timeMap: TimeMap?
+    /// The recording's folder, where a background picture lives.
+    var assetFolder: URL?
 
     /// `camera` is the webcam frame for this moment, if there is one.
     /// `outputTime` is time in the (possibly edited) video.
@@ -171,6 +173,13 @@ struct FrameCompositor: Sendable {
 
     private func background(in bounds: CGRect) -> CIImage {
         switch style.backgroundKind {
+        case .image:
+            if let name = style.backgroundImage, let folder = assetFolder, let image = BackgroundImage.image(
+                at: folder.appending(path: name), canvas: bounds.size,
+                blur: style.backgroundBlur, dim: style.backgroundDim) {
+                return image
+            }
+            return CIImage(color: style.solidColor.ciColor).cropped(to: bounds)
         case .solid:
             return CIImage(color: style.solidColor.ciColor).cropped(to: bounds)
         case .gradient:

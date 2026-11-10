@@ -21,6 +21,9 @@ struct CaptureSources {
     var windows: [WindowSource] = []
     /// Our own app, so display recordings can leave Closeup's UI out.
     var ownApplication: SCRunningApplication?
+    /// Closeup's normal windows (not the countdown or camera preview), for
+    /// when you choose to include Closeup in a recording.
+    var ownWindows: [SCWindow] = []
 
     @MainActor
     static func load() async throws -> CaptureSources {
@@ -56,6 +59,9 @@ struct CaptureSources {
         return CaptureSources(
             displays: displays,
             windows: windows,
-            ownApplication: allContent.applications.first { $0.bundleIdentifier == ownBundleID })
+            ownApplication: allContent.applications.first { $0.bundleIdentifier == ownBundleID },
+            ownWindows: allContent.windows.filter {
+                $0.owningApplication?.bundleIdentifier == ownBundleID && $0.windowLayer == 0
+            })
     }
 }

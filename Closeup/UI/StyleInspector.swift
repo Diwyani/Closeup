@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The right-hand panel: background, frame, cursor and export settings.
 /// Every control writes straight into `model.style`, which updates the preview.
@@ -19,17 +20,22 @@ struct StyleInspector: View {
                 Picker("Type", selection: $model.style.backgroundKind) {
                     Text("Gradient").tag(ExportStyle.BackgroundKind.gradient)
                     Text("Solid").tag(ExportStyle.BackgroundKind.solid)
+                    Text("Picture").tag(ExportStyle.BackgroundKind.image)
                 }
                 .pickerStyle(.segmented)
 
                 switch model.style.backgroundKind {
                 case .gradient:
                     GradientSwatches(style: $model.style)
-                    ColorPicker("From", selection: $model.style.gradientStart.color, supportsOpacity: false)
-                    ColorPicker("To", selection: $model.style.gradientEnd.color, supportsOpacity: false)
+                    LabeledContent("Colours") {
+                        GradientField(start: $model.style.gradientStart, end: $model.style.gradientEnd)
+                            .frame(width: 150)
+                    }
                     ValueSlider("Angle", value: $model.style.gradientAngle, in: 0...360) { "\(Int($0))°" }
                 case .solid:
-                    ColorPicker("Color", selection: $model.style.solidColor.color, supportsOpacity: false)
+                    LabeledContent("Colour") { ColorField(color: $model.style.solidColor) }
+                case .image:
+                    PictureControls(model: model)
                 }
             }
 
@@ -105,8 +111,9 @@ struct StyleInspector: View {
             }
 
             Section {
-                Button("Auto-trim start & end") { model.autoTrim() }
-                    .help("Keeps from just before your first click, keystroke or word to just after your last")
+                Toggle("Auto-trim start & end", isOn: Binding(
+                    get: { model.style.autoTrim }, set: { model.setAutoTrim($0) }))
+                    .help("Keeps from just before your first click, keystroke or word to just after your last. Turn off for the whole recording.")
                 Group {
                     Toggle("Speed up long waits", isOn: $model.style.speedUpIdle)
                     ValueSlider("Speed", value: $model.style.idleSpeed, in: 2...10) {
@@ -133,6 +140,11 @@ struct StyleInspector: View {
                 Toggle("Zoom", isOn: $model.style.autoZoom)
                 Group {
                     Toggle("Zoom while typing", isOn: $model.style.zoomOnTyping)
+                    ValueSlider("Typing zoom", value: $model.style.typingZoomLevel, in: 1.25...5) {
+                        $0.formatted(.number.precision(.fractionLength(1))) + "×"
+                    }
+                    .disabled(!model.style.zoomOnTyping)
+                    .help("How close it zooms while you type. Higher for small text: about 3× for 12 px.")
                     ValueSlider("Zoom level", value: $model.style.zoomLevel, in: 1.25...3.5) {
                         $0.formatted(.number.precision(.fractionLength(1))) + "×"
                     }
@@ -218,6 +230,39 @@ struct StyleInspector: View {
     }
 }
 
+/// Choose a background picture (or your wallpaper), then blur and dim it.
+private struct PictureControls: View {
+    @Bindable var model: ProjectEditorModel
+
+    var body: some View {
+        if let thumbnail = model.backgroundThumbnail {
+            Image(nsImage: thumbnail)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(maxWidth: .infinity)
+                .frame(height: 90)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+        HStack {
+            Button(model.style.backgroundImage == nil ? "Choose picture…" : "Change…") { choosePicture() }
+            Button("Use my wallpaper") { model.useDesktopWallpaper() }
+        }
+        if let error = model.backgroundError { Text(error).foregroundStyle(.red) }
+        if model.style.backgroundImage != nil {
+            ValueSlider("Blur", value: $model.style.backgroundBlur, in: 0...1) { "\(Int($0 * 100))%" }
+            ValueSlider("Dim", value: $model.style.backgroundDim, in: 0...1) { "\(Int($0 * 100))%" }
+        }
+    }
+
+    private func choosePicture() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose a picture for the background"
+        if panel.runModal() == .OK, let url = panel.url { model.useBackgroundImage(url) }
+    }
+}
+
 /// Generate, show and fix captions.
 private struct CaptionsSection: View {
     @Bindable var model: ProjectEditorModel
@@ -267,6 +312,17 @@ private struct ExportControls: View {
     @Bindable var model: ProjectEditorModel
 
     var body: some View {
+        Menu("Preset for…") {
+            ForEach(ExportPreset.allCases) { preset in
+                Button(preset.title) {
+                    model.style.aspect = preset.aspect
+                    model.resolution = preset.resolution
+                }
+            }
+        }
+        .disabled(model.exportProgress != nil)
+        .help("Sets the shape and size for where you'll post it")
+
         Picker("Resolution", selection: $model.resolution) {
             ForEach(ExportResolution.allCases) { Text($0.rawValue).tag($0) }
         }
@@ -292,10 +348,36 @@ private struct ExportControls: View {
             .controlSize(.large)
         }
 
+        if model.outputLength > 140, model.exportProgress == nil {
+            Text("Longer than 2:20, the limit for videos on X with a free account.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+
         if let url = model.exportedURL, model.exportProgress == nil {
+            // Drag this chip into a browser tab, Slack, Finder or any app.
+            HStack(spacing: 8) {
+                Image(systemName: "film")
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(url.lastPathComponent).lineLimit(1).truncationMode(.middle)
+                    Text("Drag anywhere to share").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+            }
+            .padding(8)
+            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+            .onDrag { NSItemProvider(contentsOf: url) ?? NSItemProvider() }
+
             HStack {
-                Label("Exported", systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+                ShareLink(item: url) { Label("Share", systemImage: "square.and.arrow.up") }
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.writeObjects([url as NSURL])
+                } label: {
+                    Label("Copy", systemImage: "doc.on.doc")
+                }
+                .help("Copy the video, then paste it into X, Slack, a browser or any app")
                 Spacer()
                 Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
             }

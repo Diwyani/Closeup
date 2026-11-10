@@ -6,7 +6,17 @@ import os
 /// in new settings while the preview keeps playing. Frames are rendered on
 /// background threads, hence the lock.
 final class LiveCompositor: Sendable {
+    /// The raw pictures of the last frame drawn, so the editor can redraw it
+    /// instantly with new settings while paused (no decoding needed).
+    struct Frame: @unchecked Sendable {
+        let screen: CIImage
+        let camera: CIImage?
+        /// Output time.
+        let time: Double
+    }
+
     private let state: OSAllocatedUnfairLock<FrameCompositor>
+    private let last = OSAllocatedUnfairLock<Frame?>(initialState: nil)
 
     init(_ compositor: FrameCompositor) {
         state = OSAllocatedUnfairLock(initialState: compositor)
@@ -15,6 +25,26 @@ final class LiveCompositor: Sendable {
     var current: FrameCompositor {
         get { state.withLock { $0 } }
         set { state.withLock { $0 = newValue } }
+    }
+
+    var lastFrame: Frame? {
+        get { last.withLock { $0 } }
+        set { last.withLock { $0 = newValue } }
+    }
+
+    private static let stillContext = CIContext(options: [.cacheIntermediates: false])
+
+    /// Draws `frame` with the current settings into a finished picture.
+    ///
+    /// The video's pixels are written as sRGB but played back as Rec. 709,
+    /// so the still gets the same pixels labelled Rec. 709. Otherwise it
+    /// shows slightly brighter than the video and flashes when they swap.
+    func still(of frame: Frame, canvas: CGSize) -> CGImage? {
+        let image = current.render(source: frame.screen, camera: frame.camera, at: frame.time, canvas: canvas)
+        let still = Self.stillContext.createCGImage(
+            image, from: CGRect(origin: .zero, size: canvas), format: .RGBA8,
+            colorSpace: CGColorSpace(name: CGColorSpace.sRGB))
+        return still?.copy(colorSpace: CGColorSpace(name: CGColorSpace.itur_709)!) ?? still
     }
 }
 
@@ -250,8 +280,10 @@ final class StudioVideoCompositor: NSObject, AVVideoCompositing {
             .map { CIImage(cvPixelBuffer: $0) }
 
         let size = request.renderContext.size
+        let screen = CIImage(cvPixelBuffer: screenBuffer)
+        instruction.compositor.lastFrame = .init(screen: screen, camera: camera, time: request.compositionTime.seconds)
         let frame = instruction.compositor.current.render(
-            source: CIImage(cvPixelBuffer: screenBuffer),
+            source: screen,
             camera: camera,
             at: request.compositionTime.seconds,
             canvas: size)

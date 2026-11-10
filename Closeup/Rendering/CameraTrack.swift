@@ -48,17 +48,23 @@ enum ZoomPlanner {
 
     /// One zoom per burst of activity: it begins just before the first
     /// action and ends a moment after the last.
-    static func segments(for activities: [ZoomActivity], duration: Double, scale: Double) -> [ZoomSegment] {
+    /// `scale` is for clicks, `typingScale` for typing (closer, so text is
+    /// readable). A zoom with typing in it uses the typing level.
+    static func segments(
+        for activities: [ZoomActivity], duration: Double, scale: Double, typingScale: Double
+    ) -> [ZoomSegment] {
         var segments: [ZoomSegment] = []
         var lastActivity = -Double.infinity
 
         for activity in activities.sorted(by: { $0.time < $1.time }) {
             let end = min(duration, activity.time + hold)
+            let wanted = activity.isTyping ? typingScale : scale
             if !segments.isEmpty, activity.time - lastActivity <= idleGap
                 || activity.time - lead <= segments[segments.count - 1].end + mergeGap {
                 segments[segments.count - 1].end = max(segments[segments.count - 1].end, end)
+                segments[segments.count - 1].scale = max(segments[segments.count - 1].scale, wanted)
             } else {
-                segments.append(ZoomSegment(start: max(0, activity.time - lead), end: end, scale: scale))
+                segments.append(ZoomSegment(start: max(0, activity.time - lead), end: end, scale: wanted))
             }
             lastActivity = activity.time
         }

@@ -30,8 +30,11 @@ Smooth auto zoom, a tidy cursor, your face, captions. No editing skills needed.<
 | **Captions** | Generated on your Mac from your voice, with word timing. Edit the text before exporting. |
 | **Timeline** | Trim, cuts, speed-ups, camera layouts and text titles. |
 | **Smart edits** | Auto-trim dead time at the start and end, speed up long waits, cut short pauses. Never touches anything you're saying. |
-| **Look** | Gradient or solid background, padding, rounded corners, shadow. |
-| **Export** | MP4 (H.264 + AAC) at a steady 60 fps, 1080p or 4K, in 16:9, 9:16, 1:1 or 4:3. |
+| **Look** | Gradient, solid colour or picture background (any image or your wallpaper, with blur and dim). Figma-style colour picker with eyedropper. Padding, rounded corners, shadow. |
+| **Export** | MP4 (H.264 + AAC) at a steady 60 fps, 1080p or 4K, in 16:9, 9:16, 1:1 or 4:3. One-click presets for YouTube, X, LinkedIn and Shorts/Reels/TikTok. |
+| **Share** | Drag the finished video into any app or browser tab, copy it to paste anywhere, or use the macOS share menu. |
+| **Editing comfort** | Changes show instantly while paused. Undo and redo everything with ⌘Z and ⇧⌘Z. |
+| **Film Closeup itself** | "Include Closeup" records its own window, for walkthroughs of the app. |
 
 Everything runs on your Mac. No account, no uploads, no third-party code: it's built only on Apple's frameworks.
 
@@ -114,7 +117,8 @@ Everything Closeup does automatically, and the rules behind it. For a one-screen
 | | Rule |
 |---|---|
 | **What triggers a zoom** | Every click. Also typing, if "Zoom while typing" is on. |
-| **Where typing zooms** | Where you last clicked, if that was within 10 s (usually the text field), otherwise the cursor. Typing in the last 1 s of the recording is ignored, since that's the stop shortcut. |
+| **Where typing zooms** | Where you last clicked, if that was within 10 s (usually the text field), otherwise the mouse. Typing in the last 1 s of the recording is ignored, since that's the stop shortcut. |
+| **How close typing zooms** | Closer than clicks, so small text is readable: "Typing zoom", 3× by default (1.25–5×). A zoom with typing in it uses the typing level. |
 | **Start and end** | Starts zooming 0.5 s before the first action. Holds 1.5 s after the last. |
 | **One zoom or several** | Actions under 3 s apart keep the same zoom going. Zooms under 1 s apart join, so it never zooms out and straight back in. |
 | **How close** | 2× by default ("Zoom level", 1.25–3.5×). Each zoom can have its own level. |

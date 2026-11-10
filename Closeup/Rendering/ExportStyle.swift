@@ -8,7 +8,7 @@ import Foundation
 /// them for other sizes, so a 4K export looks identical, just sharper.
 struct ExportStyle: Codable, Equatable, Sendable {
     enum BackgroundKind: String, Codable, CaseIterable, Sendable {
-        case gradient, solid
+        case gradient, solid, image
     }
 
     var backgroundKind = BackgroundKind.gradient
@@ -17,6 +17,12 @@ struct ExportStyle: Codable, Equatable, Sendable {
     var gradientEnd = GradientPreset.all[0].end
     /// Like CSS: 0° goes up, 90° goes right, 135° goes to the bottom-right.
     var gradientAngle = 135.0
+    /// The picture's file name inside the recording's folder.
+    var backgroundImage: String?
+    /// 0 = sharp, 1 = very soft.
+    var backgroundBlur = 0.4
+    /// 0 = as is, 1 = much darker.
+    var backgroundDim = 0.0
 
     var padding = 80.0
     var cornerRadius = 14.0
@@ -58,6 +64,8 @@ struct ExportStyle: Codable, Equatable, Sendable {
     var zoomLevel = 2.0
     /// Also zoom in while typing, not just on clicks.
     var zoomOnTyping = true
+    /// How close typing zooms: closer than clicks, so small text is readable.
+    var typingZoomLevel = 3.0
     /// How quickly the camera zooms and pans (1 = normal).
     var zoomSpeed = 1.0
     /// Zooms edited on the timeline. nil = use the automatic ones.
@@ -76,6 +84,8 @@ struct ExportStyle: Codable, Equatable, Sendable {
     /// The part of the recording to keep, in seconds. nil end = to the end.
     var trimStart = 0.0
     var trimEnd: Double?
+    /// Trim to just before your first action or word and just after your last.
+    var autoTrim = false
 
     enum Corner: String, Codable, CaseIterable, Sendable {
         case topLeft, topRight, bottomLeft, bottomRight
@@ -135,6 +145,9 @@ struct ExportStyle: Codable, Equatable, Sendable {
         gradientStart = try c.decodeIfPresent(RGBAColor.self, forKey: .gradientStart) ?? d.gradientStart
         gradientEnd = try c.decodeIfPresent(RGBAColor.self, forKey: .gradientEnd) ?? d.gradientEnd
         gradientAngle = try c.decodeIfPresent(Double.self, forKey: .gradientAngle) ?? d.gradientAngle
+        backgroundImage = try c.decodeIfPresent(String.self, forKey: .backgroundImage)
+        backgroundBlur = try c.decodeIfPresent(Double.self, forKey: .backgroundBlur) ?? d.backgroundBlur
+        backgroundDim = try c.decodeIfPresent(Double.self, forKey: .backgroundDim) ?? d.backgroundDim
         padding = try c.decodeIfPresent(Double.self, forKey: .padding) ?? d.padding
         cornerRadius = try c.decodeIfPresent(Double.self, forKey: .cornerRadius) ?? d.cornerRadius
         shadow = try c.decodeIfPresent(Double.self, forKey: .shadow) ?? d.shadow
@@ -148,6 +161,7 @@ struct ExportStyle: Codable, Equatable, Sendable {
         autoZoom = try c.decodeIfPresent(Bool.self, forKey: .autoZoom) ?? d.autoZoom
         zoomLevel = try c.decodeIfPresent(Double.self, forKey: .zoomLevel) ?? d.zoomLevel
         zoomOnTyping = try c.decodeIfPresent(Bool.self, forKey: .zoomOnTyping) ?? d.zoomOnTyping
+        typingZoomLevel = try c.decodeIfPresent(Double.self, forKey: .typingZoomLevel) ?? d.typingZoomLevel
         zoomSpeed = try c.decodeIfPresent(Double.self, forKey: .zoomSpeed) ?? d.zoomSpeed
         zoomSegments = try c.decodeIfPresent([ZoomSegment].self, forKey: .zoomSegments)
         speedUpIdle = try c.decodeIfPresent(Bool.self, forKey: .speedUpIdle) ?? d.speedUpIdle
@@ -157,6 +171,7 @@ struct ExportStyle: Codable, Equatable, Sendable {
         timeEdits = try c.decodeIfPresent([TimeEdit].self, forKey: .timeEdits)
         trimStart = try c.decodeIfPresent(Double.self, forKey: .trimStart) ?? d.trimStart
         trimEnd = try c.decodeIfPresent(Double.self, forKey: .trimEnd)
+        autoTrim = try c.decodeIfPresent(Bool.self, forKey: .autoTrim) ?? d.autoTrim
         showsCamera = try c.decodeIfPresent(Bool.self, forKey: .showsCamera) ?? d.showsCamera
         cameraShape = try c.decodeIfPresent(CameraShape.self, forKey: .cameraShape) ?? d.cameraShape
         cameraRoundness = try c.decodeIfPresent(Double.self, forKey: .cameraRoundness) ?? d.cameraRoundness
