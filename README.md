@@ -8,6 +8,7 @@
 Smooth auto zoom, a tidy cursor, your face, captions. No editing skills needed.</p>
 
 <p align="center">
+  <a href="INSTALL.md">Install guide</a> ·
   <a href="#run-it">Run it</a> ·
   <a href="#how-to-use">How to use</a> ·
   <a href="#how-it-decides">How it decides</a> ·
@@ -27,11 +28,11 @@ Smooth auto zoom, a tidy cursor, your face, captions. No editing skills needed.<
 | **Cursor** | Smoothed movement, adjustable size, click glow, motion blur, hides when idle. |
 | **Camera** | Live preview while recording. Circle, square, tall or wide bubble in any corner, plus full-screen and side-by-side layouts you can switch on the timeline. |
 | **Audio** | Microphone and system audio. Optional voice cleanup: noise removal and even loudness (about −16 LUFS). |
-| **Captions** | Generated on your Mac from your voice, with word timing. Edit the text before exporting. |
-| **Timeline** | Trim, cuts, speed-ups, camera layouts and text titles. |
-| **Smart edits** | Auto-trim dead time at the start and end, speed up long waits, cut short pauses. Never touches anything you're saying. |
+| **Captions** | Generated on your Mac from your voice, with word timing. Edit the text and style them: glass, dark, light or coloured box, text colour, weight. |
+| **Timeline** | Trim, cuts, speed-ups, camera layouts and text titles. Titles always stay readable: frosted glass box, automatic text colour, optional dim behind, and they move out of the way of your cursor. |
+| **Smart edits** | Auto-trim dead time at the start and end, speed up long waits, cut short pauses, remove filler sounds (um, uh). Never cuts the words you're saying. |
 | **Look** | Gradient, solid colour or picture background (any image or your wallpaper, with blur and dim). Figma-style colour picker with eyedropper. Padding, rounded corners, shadow. |
-| **Export** | MP4 (H.264 + AAC) at a steady 60 fps, 1080p or 4K, in 16:9, 9:16, 1:1 or 4:3. One-click presets for YouTube, X, LinkedIn and Shorts/Reels/TikTok. |
+| **Export** | One click from the Export button at the top right. MP4 (H.264 + AAC) at a steady 60 fps, 720p, 1080p or 4K, in 16:9, 9:16, 1:1 or 4:3. One-click presets for YouTube, X, LinkedIn and Shorts/Reels/TikTok. |
 | **Share** | Drag the finished video into any app or browser tab, copy it to paste anywhere, or use the macOS share menu. |
 | **Editing comfort** | Changes show instantly while paused. Undo and redo everything with ⌘Z and ⇧⌘Z. |
 | **Film Closeup itself** | "Include Closeup" records its own window, for walkthroughs of the app. |
@@ -44,6 +45,8 @@ Everything runs on your Mac. No account, no uploads, no third-party code: it's b
 - Xcode 26 or later (free on the Mac App Store)
 
 ## Run it
+
+**New to Xcode?** Follow the [step-by-step install guide](INSTALL.md), with screenshots.
 
 1. Download this repository: **Code → Download ZIP**, then unzip it. Or clone it:
    ```bash
@@ -61,6 +64,7 @@ Closeup is an early personal project. Right now:
 - **Mac only.** It's built on macOS frameworks, so it won't run on Windows, Linux or iPad.
 - **Captions** work best on macOS 26. On older versions they need Siri or Dictation turned on in System Settings.
 - **Voice cleanup** uses Apple's voice isolation when your Mac has it, and falls back to simpler noise reduction otherwise.
+- **Filler removal** needs captions first (it uses their word timings). It catches most "um" and "uh" sounds, but not all, and now and then may cut a word the speech engine didn't recognise. Every cut shows on the timeline, so you can delete any you don't want.
 - **Smart edits** use your mouse, keyboard and voice, not what's on screen. A silent wait where something important is loading may be sped up, so check the timeline before exporting.
 - **Tested on one Mac** (Apple silicon, macOS 26). If something breaks on yours, please open an issue.
 
@@ -105,7 +109,7 @@ Everything Closeup does automatically, and the rules behind it. For a one-screen
 | **Screen** | 60 fps at the display's full resolution, saved as HEVC. Captured in the encoder's own colour format, so frames go straight to the hardware encoder. |
 | **Real cursor** | Left out of the video and logged separately (position, clicks, shape), so it can be redrawn smoothly later. |
 | **Typing** | Closeup notes *that* you typed, checked every 0.1 s. It never records *which* keys. |
-| **Cursor shape** | Checked every 0.1 s (arrow, text beam, hand…), so the redrawn cursor matches. |
+| **Cursor shape** | Checked every 0.1 s (arrow, text beam, hand and others), so the redrawn cursor matches. |
 | **Camera** | 720p, H.264. It starts during the countdown so exposure has settled before recording begins. |
 | **Sync** | Screen, camera, mic, system audio and cursor all use the Mac's one system clock. Anything that started early is trimmed to match the screen. |
 | **Own windows** | The countdown, camera preview and Closeup's own windows are left out of display recordings. |
@@ -158,7 +162,8 @@ Used so automatic edits never cut you off.
 | **Speed up** ("Speed up long waits") | Quiet gaps of 3 s or more. 0.75 s of normal speed is kept on each side, and only gaps that still leave at least 1 s are sped up. 4× by default (2–10×). Voices keep their normal pitch. |
 | **Cut** ("Cut pauses") | Quiet gaps from 1.5 s (0.8–3 s) up to 3 s. With speed-ups off, any quiet gap that long. 0.3 s is kept on each side. |
 | **Why both** | Long waits are sped up rather than cut, so you still see what changed on screen (a page loading, for example). |
-| **Hand edits** | Once you add, move or delete a cut or speed-up yourself, the automatic ones stop until you click **Reset edits**. |
+| **Filler sounds** ("Remove filler sounds") | Cuts words the recogniser wrote as fillers (um, uh, erm, hmm and similar), plus bursts of voice of 0.2 to 1.2 s that no recognised word covers (skipped fillers, coughs, loud breaths). 0.05 s extra on each side, never into a real word. Needs captions. |
+| **Hand edits** | Cuts and speed-ups you add or change are kept, and the automatic ones fill in around them. An automatic one you delete or change stays gone. **Reset edits** goes back to only automatic edits. |
 
 ### Auto-trim
 
@@ -176,7 +181,8 @@ Used so automatic edits never cut you off.
 | **Language** | Your Mac's language, or English if that isn't supported. |
 | **New line** | A new caption starts after a pause of more than 0.6 s, after 3 s, after 7 words, or at the end of a sentence. |
 | **Timing** | A caption stays 0.2 s after its last word, but never overlaps the next one. |
-| **Placement** | Bottom centre, 7% up from the bottom, up to 80% of the width, wrapping to more lines if needed. White text on a dark rounded box, in the system font. |
+| **Placement** | Bottom centre, 7% up from the bottom, up to 80% of the width, wrapping to more lines if needed. Moves to the top for that line if the cursor works in the bottom 30% of the view while it shows ("Avoid the action"). |
+| **Look** | Dark box at 72% by default. Box: glass, dark, light, any colour or none, with opacity. Text colour automatic or your own. Regular, semibold or bold system font. |
 
 ### Camera and layouts
 
@@ -196,8 +202,10 @@ Used so automatic edits never cut you off.
 | | Rule |
 |---|---|
 | **New title** | 3 s long, at the top, at the playhead. |
-| **Position** | Top (8% from the top), middle, or bottom (18% from the bottom, above captions). |
-| **Look** | Bold system font, white, with a soft shadow, or on a dark box ("Background box"). Up to 85% of the width. |
+| **Position** | Top (8% from the top), middle, or bottom (18% from the bottom, above captions). With "Avoid the action" (on by default), a top title moves to the bottom if the cursor works in the top 30% of the view while it shows, and the other way round. Decided once per title, so it never jumps. |
+| **Look** | Bold system font on a frosted glass box by default (blurs what's behind it, tinted 35%). Box: glass, dark, light, any colour or none (then with a soft shadow), with opacity. Up to 85% of the width. |
+| **Text colour** | "Auto text colour" (on by default) measures the average brightness behind the text every frame and picks white or black, whichever reads better. Or choose your own. |
+| **Dim behind** | Optional: darkens the screen by 45% while the title shows, like a spotlight. |
 | **Fade** | In and out over 0.25 s. |
 
 ### Voice cleanup
@@ -218,8 +226,8 @@ The original microphone file is kept; the cleaned copy is saved next to it as `m
 | | Rule |
 |---|---|
 | **Frame rate** | A steady 60 fps, even where the screen didn't change, so zooms and the cursor never stutter. |
-| **Size** | The short side is 1080 or 2160 px, and the long side follows the shape (16:9, 9:16, 1:1, 4:3). |
-| **Quality** | H.264 at 20 Mbps (1080p) or 60 Mbps (4K), with AAC audio, in an MP4. |
+| **Size** | The short side is 720, 1080 or 2160 px, and the long side follows the shape (16:9, 9:16, 1:1, 4:3). |
+| **Quality** | H.264 at 10 Mbps (720p), 20 Mbps (1080p) or 60 Mbps (4K), with AAC audio, in an MP4. |
 | **Colour** | Tagged as Rec. 709, so colours match on YouTube, Twitter and phones. |
 | **Sharpness** | High-quality (Lanczos) downscaling, so small text stays crisp. |
 | **Same look at every size** | Everything is designed on a 1080p canvas and scaled, so 4K and vertical exports match the preview. |

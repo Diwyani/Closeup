@@ -10,6 +10,15 @@ struct Caption: Codable, Equatable, Sendable, Identifiable {
     var start: Double
     var end: Double
     var text: String
+    /// When each recognised word was said (recording time). Used to find
+    /// filler sounds: voice with no word in it.
+    var words: [CaptionWord]?
+}
+
+struct CaptionWord: Codable, Equatable, Sendable {
+    var text: String?
+    var start: Double
+    var end: Double
 }
 
 enum CaptionError: LocalizedError {
@@ -130,7 +139,8 @@ enum CaptionGenerator {
             captions.append(Caption(
                 start: first.start + offset,
                 end: last.end + offset + 0.2,
-                text: current.map(\.text).joined(separator: " ")))
+                text: current.map(\.text).joined(separator: " "),
+                words: current.map { CaptionWord(text: $0.text, start: $0.start + offset, end: $0.end + offset) }))
             current = []
         }
 
@@ -153,18 +163,16 @@ enum CaptionGenerator {
     }
 }
 
-/// Draws caption and title text as an image, in the system font. Text
-/// images are cached, since the same text is drawn for many frames in a row.
+/// Draws caption and title text as white letters on clear, in the system
+/// font, with room around them for a box. Colour, box and shadow are added
+/// per frame by FrameCompositor. Cached, since the same text is drawn for
+/// many frames in a row.
 enum CaptionRenderer {
     private static let cache = NSCache<NSString, CIImage>()
 
-    /// White text, `fontSize` in canvas pixels. With `background`, on a dark
-    /// rounded pill; without, with a soft shadow so it reads on anything.
-    static func image(
-        for text: String, fontSize: CGFloat, maxWidth: CGFloat,
-        weight: NSFont.Weight = .semibold, background: Bool = true
-    ) -> CIImage? {
-        let key = "\(text)|\(Int(fontSize))|\(Int(maxWidth))|\(weight.rawValue)|\(background)" as NSString
+    /// `fontSize` in canvas pixels.
+    static func image(for text: String, fontSize: CGFloat, maxWidth: CGFloat, weight: NSFont.Weight = .semibold) -> CIImage? {
+        let key = "\(text)|\(Int(fontSize))|\(Int(maxWidth))|\(weight.rawValue)" as NSString
         if let cached = cache.object(forKey: key) { return cached }
 
         let font = NSFont.systemFont(ofSize: fontSize, weight: weight) as CTFont
@@ -191,18 +199,6 @@ enum CaptionRenderer {
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
         else { return nil }
 
-        let pill = CGPath(
-            roundedRect: CGRect(x: 0, y: 0, width: width, height: height),
-            cornerWidth: fontSize * 0.45, cornerHeight: fontSize * 0.45, transform: nil)
-        if background {
-            context.addPath(pill)
-            context.setFillColor(CGColor(gray: 0, alpha: 0.72))
-            context.fillPath()
-        } else {
-            context.setShadow(offset: CGSize(width: 0, height: -fontSize * 0.04), blur: fontSize * 0.25,
-                              color: CGColor(gray: 0, alpha: 0.6))
-        }
-
         let textRect = CGRect(x: padX, y: padY, width: ceil(textSize.width), height: ceil(textSize.height))
         let frame = CTFramesetterCreateFrame(framesetter, CFRange(), CGPath(rect: textRect, transform: nil), nil)
         CTFrameDraw(frame, context)
@@ -211,5 +207,15 @@ enum CaptionRenderer {
         let image = CIImage(cgImage: cgImage)
         cache.setObject(image, forKey: key)
         return image
+    }
+}
+
+extension TextLook.Weight {
+    var font: NSFont.Weight {
+        switch self {
+        case .regular: .regular
+        case .semibold: .semibold
+        case .bold: .bold
+        }
     }
 }

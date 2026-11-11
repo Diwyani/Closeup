@@ -29,11 +29,14 @@ enum AutoEditPlanner {
     static let speedMargin = 0.75     // normal speed kept around actions
     static let cutPause = 0.3         // pause left on each side of a cut
 
+    /// `fillers`: filler sounds to cut too (see FillerDetector).
     static func edits(
         from log: CursorLog, speech: [ClosedRange<Double>], duration: Double,
-        speedUp: Bool, speed: Double, cutSilence: Bool, silenceLength: Double
+        speedUp: Bool, speed: Double, cutSilence: Bool, silenceLength: Double,
+        fillers: [ClosedRange<Double>] = []
     ) -> [TimeEdit] {
-        guard speedUp || cutSilence else { return [] }
+        var fillerCuts = fillers.map { TimeEdit(kind: .cut, start: $0.lowerBound, end: $0.upperBound) }
+        guard speedUp || cutSilence else { return fillerCuts }
         var busy = activityTimes(log).map { $0...$0 } + speech
         busy.sort { $0.lowerBound < $1.lowerBound }
 
@@ -50,7 +53,8 @@ enum AutoEditPlanner {
             }
             last = max(last, range.upperBound)
         }
-        return edits
+        fillerCuts.removeAll { cut in edits.contains { $0.start < cut.end && cut.start < $0.end } }
+        return (edits + fillerCuts).sorted { $0.start < $1.start }
     }
 
     /// The part worth keeping: from just before your first click, keystroke
@@ -82,6 +86,59 @@ enum AutoEditPlanner {
             }
         }
         return times
+    }
+}
+
+/// Finds "um", "uh" and similar sounds, two ways:
+/// - words the recogniser wrote down as a filler ("uh", "um", "erm"…),
+/// - short bursts of voice it didn't turn into any word (it often skips
+///   fillers, coughs and loud breaths).
+enum FillerDetector {
+    static let fillerWords: Set<String> = ["um", "umm", "uh", "uhh", "uhm", "er", "erm", "ah", "ahh", "hmm", "mm", "eh"]
+
+    static func isFiller(_ word: CaptionWord) -> Bool {
+        guard let text = word.text else { return false }
+        return fillerWords.contains(text.lowercased().trimmingCharacters(in: .punctuationCharacters.union(.whitespaces)))
+    }
+
+    static let shortest = 0.2   // shorter bursts are clicks or consonants
+    static let longest = 1.2    // longer ones are probably real, unrecognised words
+    static let margin = 0.05    // cut a little around the sound
+
+    static func fillers(voiced: [ClosedRange<Double>], words allWords: [CaptionWord]) -> [ClosedRange<Double>] {
+        guard !allWords.isEmpty else { return [] }
+        let sorted = allWords.sorted { $0.start < $1.start }
+        let words = sorted.filter { !isFiller($0) }  // the real words, never cut
+        var fillers: [ClosedRange<Double>] = []
+
+        // Fillers the recogniser wrote down.
+        for filler in sorted where isFiller(filler) {
+            let previousEnd = words.last { $0.end <= filler.start + margin }?.end ?? -.infinity
+            let nextStart = words.first { $0.start >= filler.end - margin }?.start ?? .infinity
+            let start = max(filler.start - margin, previousEnd + 0.03)
+            let end = min(filler.end + margin, nextStart - 0.03)
+            if end - start >= 0.1 { fillers.append(start...end) }
+        }
+
+        // Voice the recogniser skipped.
+        for sound in voiced {
+            let length = sound.upperBound - sound.lowerBound
+            guard length >= shortest, length <= longest else { continue }
+            // Mostly not covered by a recognised word.
+            let covered = words.reduce(0.0) {
+                $0 + max(0, min($1.end, sound.upperBound) - max($1.start, sound.lowerBound))
+            }
+            guard covered < length * 0.2 else { continue }
+            // Never cut into the words on either side.
+            let previousEnd = words.last { $0.end <= sound.lowerBound + margin }?.end ?? -.infinity
+            let nextStart = words.first { $0.start >= sound.upperBound - margin }?.start ?? .infinity
+            let start = max(sound.lowerBound - margin, previousEnd + 0.03)
+            let end = min(sound.upperBound + margin, nextStart - 0.03)
+            if end - start >= 0.15, !fillers.contains(where: { $0.overlaps(start...end) }) {
+                fillers.append(start...end)
+            }
+        }
+        return fillers.sorted { $0.lowerBound < $1.lowerBound }
     }
 }
 

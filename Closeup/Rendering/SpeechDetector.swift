@@ -11,14 +11,21 @@ enum SpeechDetector {
     static let minimum = 0.15  // blips shorter than this are noise
     static let padding = 0.15  // breathing room around each stretch
 
-    /// Stretches of speech, in recording time (`offset` = where the file starts).
-    static func speech(in file: URL, offset: Double) async -> [ClosedRange<Double>] {
+    struct Result: Sendable {
+        /// Sentences: short gaps bridged, padded. Protected from automatic edits.
+        var speech: [ClosedRange<Double>] = []
+        /// Each separate burst of voice, unbridged. Used to find filler sounds.
+        var voiced: [ClosedRange<Double>] = []
+    }
+
+    /// When you're talking, in recording time (`offset` = where the file starts).
+    static func speech(in file: URL, offset: Double) async -> Result {
         await Task.detached(priority: .utility) {
-            (try? detect(file, offset: offset)) ?? []
+            (try? detect(file, offset: offset)) ?? Result()
         }.value
     }
 
-    private static func detect(_ url: URL, offset: Double) throws -> [ClosedRange<Double>] {
+    private static func detect(_ url: URL, offset: Double) throws -> Result {
         let file = try AVAudioFile(forReading: url)
         let format = file.processingFormat
         let frames = AVAudioFrameCount(format.sampleRate * window)
@@ -33,7 +40,7 @@ enum SpeechDetector {
             for i in 0..<Int(buffer.frameLength) { power += Double(data[0][i] * data[0][i]) }
             levels.append(10 * log10(max(power / Double(buffer.frameLength), 1e-10)))
         }
-        guard !levels.isEmpty else { return [] }
+        guard !levels.isEmpty else { return Result() }
 
         // The quietest tenth is the room; speech is at least 12 dB above it.
         let floor = levels.sorted()[levels.count / 10]
@@ -63,12 +70,18 @@ enum SpeechDetector {
         }
         // A stretch can land entirely before the video starts (the mic starts
         // first), so drop those rather than make a backwards range.
-        return merged
+        let speech = merged
             .filter { $0.upperBound - $0.lowerBound >= minimum }
             .compactMap { range in
                 let start = max(0, range.lowerBound - padding + offset)
                 let end = range.upperBound + padding + offset
                 return end > start ? start...end : nil
             }
+        let voiced = ranges.compactMap { range -> ClosedRange<Double>? in
+            let start = max(0, range.lowerBound + offset)
+            let end = range.upperBound + offset
+            return end > start ? start...end : nil
+        }
+        return Result(speech: speech, voiced: voiced)
     }
 }

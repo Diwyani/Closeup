@@ -61,6 +61,8 @@ final class ProjectEditorModel {
     @ObservationIgnored private let cursorLog: CursorLog
     /// When you're talking (from the mic), so automatic edits never touch it.
     @ObservationIgnored private var speechRanges: [ClosedRange<Double>] = []
+    /// Separate bursts of voice, for finding filler sounds.
+    @ObservationIgnored private var voicedRanges: [ClosedRange<Double>] = []
     @ObservationIgnored private let sprites: CursorSprites
     @ObservationIgnored private var cursorTrack: CursorTrack
     @ObservationIgnored private var cameraTrack: CameraTrack?
@@ -125,8 +127,10 @@ final class ProjectEditorModel {
         if style.cleansAudio != old.cleansAudio {
             Task { await applyAudioCleanup() }
         }
-        if style.timeEdits != old.timeEdits || style.speedUpIdle != old.speedUpIdle || style.idleSpeed != old.idleSpeed
-            || style.cutsSilence != old.cutsSilence || style.silenceLength != old.silenceLength {
+        if style.timeEdits != old.timeEdits || style.dismissedEdits != old.dismissedEdits || style.speedUpIdle != old.speedUpIdle || style.idleSpeed != old.idleSpeed
+            || style.cutsSilence != old.cutsSilence || style.silenceLength != old.silenceLength
+            || style.removesFillers != old.removesFillers
+            || (style.removesFillers && style.captions?.map(\.words) != old.captions?.map(\.words)) {
             timeEdits = currentTimeEdits()
             scheduleTimelineRebuild()
             return
@@ -248,11 +252,29 @@ final class ProjectEditorModel {
 
     // MARK: Timeline: cuts & speed-ups
 
+    /// Which edits in `timeEdits` are automatic (not made or changed by you).
+    @ObservationIgnored private var automaticEditIDs: Set<UUID> = []
+
+    /// Your own edits, plus the automatic ones that don't clash with them or
+    /// with automatic ones you removed.
     private func currentTimeEdits() -> [TimeEdit] {
-        style.timeEdits ?? AutoEditPlanner.edits(
+        let own = style.timeEdits ?? []
+        let blocked = own + style.dismissedEdits
+        let automatic = automaticTimeEdits().filter { edit in
+            !blocked.contains { $0.start < edit.end && edit.start < $0.end }
+        }
+        automaticEditIDs = Set(automatic.map(\.id))
+        return (own + automatic).sorted { $0.start < $1.start }
+    }
+
+    private func automaticTimeEdits() -> [TimeEdit] {
+        AutoEditPlanner.edits(
             from: cursorLog, speech: speechRanges, duration: duration,
             speedUp: style.speedUpIdle, speed: style.idleSpeed,
-            cutSilence: style.cutsSilence, silenceLength: style.silenceLength)
+            cutSilence: style.cutsSilence, silenceLength: style.silenceLength,
+            fillers: style.removesFillers
+                ? FillerDetector.fillers(voiced: voicedRanges, words: captions.flatMap { $0.words ?? [] })
+                : [])
     }
 
     /// Rebuilding swaps the player's item, so wait until edits settle
@@ -294,14 +316,16 @@ final class ProjectEditorModel {
         guard let microphone = metadata.microphone else { return }
         let url = project.folder.appending(path: microphone.file)
         Task {
-            speechRanges = await SpeechDetector.speech(in: url, offset: microphone.offset)
+            let result = await SpeechDetector.speech(in: url, offset: microphone.offset)
+            speechRanges = result.speech
+            voicedRanges = result.voiced
             if style.autoTrim {
                 // Speech can move the trim; not a change worth undoing.
                 isRestoringStyle = true
                 applyAutoTrim()
                 isRestoringStyle = false
             }
-            if !editsAreCustom, style.speedUpIdle || style.cutsSilence { rebuildTimeline() }
+            if style.speedUpIdle || style.cutsSilence || style.removesFillers { rebuildTimeline() }
         }
     }
 
@@ -327,28 +351,36 @@ final class ProjectEditorModel {
         style = changed
     }
 
-    var editsAreCustom: Bool { style.timeEdits != nil }
+    /// You've added, changed or removed cuts or speed-ups yourself.
+    var editsAreCustom: Bool { !(style.timeEdits ?? []).isEmpty || !style.dismissedEdits.isEmpty }
     var selectedEdit: TimeEdit? { timeEdits.first { $0.id == selectedID } }
 
     func addEdit(_ kind: TimeEdit.Kind, at time: Double) {
         let edit = TimeEdit(kind: kind, start: max(0, time), end: min(duration, time + 2), speed: style.idleSpeed)
-        style.timeEdits = (timeEdits + [edit]).sorted { $0.start < $1.start }
+        style.timeEdits = ((style.timeEdits ?? []) + [edit]).sorted { $0.start < $1.start }
         selectedID = edit.id
     }
 
+    /// Changing an automatic edit makes it yours.
     func updateEdit(_ edit: TimeEdit) {
-        var edits = timeEdits
-        guard let index = edits.firstIndex(where: { $0.id == edit.id }) else { return }
+        guard let original = timeEdits.first(where: { $0.id == edit.id }) else { return }
         var changed = edit
         changed.start = min(max(0, changed.start), duration - 0.3)
         changed.end = min(duration, max(changed.end, changed.start + 0.3))
-        edits[index] = changed
-        style.timeEdits = edits.sorted { $0.start < $1.start }
+        var updated = style
+        var own = (updated.timeEdits ?? []).filter { $0.id != edit.id }
+        if automaticEditIDs.contains(edit.id) { updated.dismissedEdits.append(original) }
+        own.append(changed)
+        updated.timeEdits = own.sorted { $0.start < $1.start }
+        style = updated
     }
 
-    /// Back to automatic edits (idle speed-ups, if turned on).
+    /// Back to only the automatic edits.
     func resetEdits() {
-        style.timeEdits = nil
+        var updated = style
+        updated.timeEdits = nil
+        updated.dismissedEdits = []
+        style = updated
         selectedID = nil
     }
 
@@ -467,6 +499,9 @@ final class ProjectEditorModel {
         if backgroundError != nil { backgroundError = "Your wallpaper can't be used (moving wallpapers aren't supported). Choose a picture instead." }
     }
 
+    /// Captions made with word timings (captions from before this feature have none).
+    var canRemoveFillers: Bool { captions.contains { $0.words?.isEmpty == false } }
+
     // MARK: Captions
 
     var captions: [Caption] { style.captions ?? [] }
@@ -529,8 +564,12 @@ final class ProjectEditorModel {
             style.cameraLayouts = layoutSegments.filter { $0.id != id }
         } else if zoomSegments.contains(where: { $0.id == id }) {
             style.zoomSegments = zoomSegments.filter { $0.id != id }
-        } else if timeEdits.contains(where: { $0.id == id }) {
-            style.timeEdits = timeEdits.filter { $0.id != id }
+        } else if let edit = timeEdits.first(where: { $0.id == id }) {
+            if automaticEditIDs.contains(id) {
+                style.dismissedEdits.append(edit)  // don't bring it back
+            } else {
+                style.timeEdits = (style.timeEdits ?? []).filter { $0.id != id }
+            }
         }
         selectedID = nil
     }

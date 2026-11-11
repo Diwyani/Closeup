@@ -14,6 +14,7 @@ struct StyleInspector: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
+                .frame(maxWidth: .infinity)
             }
 
             Section("Background") {
@@ -90,10 +91,21 @@ struct StyleInspector: View {
                         get: { selected.size },
                         set: { var overlay = selected; overlay.size = $0; model.updateText(overlay) }
                     ), in: 0.5...2.5) { $0.formatted(.number.precision(.fractionLength(1))) + "×" }
-                    Toggle("Background box", isOn: Binding(
-                        get: { selected.hasBackground },
-                        set: { var overlay = selected; overlay.hasBackground = $0; model.updateText(overlay) }
+                    TextLookControls(look: Binding(
+                        get: { selected.look },
+                        set: { var overlay = selected; overlay.look = $0; model.updateText(overlay) }
                     ))
+                    Toggle("Dim behind", isOn: Binding(
+                        get: { selected.dimsBehind },
+                        set: { var overlay = selected; overlay.dimsBehind = $0; model.updateText(overlay) }
+                    ))
+                    .help("Darkens the screen while this title shows, like a spotlight")
+                    Toggle("Avoid the action", isOn: Binding(
+                        get: { selected.avoidsAction },
+                        set: { var overlay = selected; overlay.avoidsAction = $0; model.updateText(overlay) }
+                    ))
+                    .disabled(selected.position == .center)
+                    .help("Moves to the other edge if the cursor is working near this one")
                     Button("Delete text", role: .destructive) { model.deleteSelected() }
                 }
             }
@@ -125,13 +137,19 @@ struct StyleInspector: View {
                         $0.formatted(.number.precision(.fractionLength(1))) + " s"
                     }
                     .disabled(!model.style.cutsSilence)
+                    if model.hasMicrophone {
+                        Toggle("Remove filler sounds (um, uh)", isOn: $model.style.removesFillers)
+                            .disabled(!model.canRemoveFillers)
+                            .help(model.canRemoveFillers
+                                  ? "Cuts short sounds with no recognised word, like um, uh, coughs and loud breaths"
+                                  : "Generate captions first (Captions section). It uses their word timings.")
+                    }
                 }
-                .disabled(model.editsAreCustom)
             } header: {
                 Text("Timing")
             } footer: {
                 Text(model.editsAreCustom
-                     ? "You've edited cuts or speed-ups by hand. Reset edits on the timeline to use these again."
+                     ? "Your own cuts and speed-ups are kept; automatic ones fill in around them. Reset edits on the timeline to start over."
                      : "Waits of 3 s or more are sped up; shorter pauses are cut. Your voice is never sped up or cut.")
                     .foregroundStyle(.secondary)
             }
@@ -222,11 +240,38 @@ struct StyleInspector: View {
                 }
             }
 
-            Section("Export") {
-                ExportControls(model: model)
-            }
         }
         .formStyle(.grouped)
+    }
+}
+
+/// Box, text colour and weight, for a title or the captions.
+private struct TextLookControls: View {
+    @Binding var look: TextLook
+
+    var body: some View {
+        Picker("Box", selection: $look.box) {
+            ForEach(TextLook.Box.allCases, id: \.self) { Text($0.title).tag($0) }
+        }
+        if look.box == .custom || look.box == .glass {
+            LabeledContent(look.box == .glass ? "Tint" : "Box colour") { ColorField(color: $look.boxColor) }
+        }
+        if look.box != .none {
+            ValueSlider(look.box == .glass ? "Tint amount" : "Box opacity", value: $look.boxOpacity, in: 0...1) {
+                "\(Int($0 * 100))%"
+            }
+        }
+        Toggle("Auto text colour", isOn: $look.autoColor)
+            .help("White or black, whichever reads better on what's behind the text")
+        if !look.autoColor {
+            LabeledContent("Text colour") { ColorField(color: $look.textColor) }
+        }
+        Picker("Weight", selection: $look.weight) {
+            Text("Regular").tag(TextLook.Weight.regular)
+            Text("Semibold").tag(TextLook.Weight.semibold)
+            Text("Bold").tag(TextLook.Weight.bold)
+        }
+        .pickerStyle(.segmented)
     }
 }
 
@@ -244,7 +289,7 @@ private struct PictureControls: View {
                 .clipShape(RoundedRectangle(cornerRadius: 6))
         }
         HStack {
-            Button(model.style.backgroundImage == nil ? "Choose picture…" : "Change…") { choosePicture() }
+            Button(model.style.backgroundImage == nil ? "Choose picture" : "Change picture") { choosePicture() }
             Button("Use my wallpaper") { model.useDesktopWallpaper() }
         }
         if let error = model.backgroundError { Text(error).foregroundStyle(.red) }
@@ -274,7 +319,7 @@ private struct CaptionsSection: View {
                     .disabled(model.isGeneratingCaptions)
                 if model.isGeneratingCaptions {
                     ProgressView().controlSize(.small)
-                    Text("Listening…").foregroundStyle(.secondary)
+                    Text("Listening").foregroundStyle(.secondary)
                 }
             }
             if let error = model.captionError { Text(error).foregroundStyle(.red) }
@@ -282,6 +327,12 @@ private struct CaptionsSection: View {
                 Toggle("Show captions", isOn: $model.style.showsCaptions)
                 ValueSlider("Size", value: $model.style.captionSize, in: 0.6...1.8) {
                     $0.formatted(.number.precision(.fractionLength(1))) + "×"
+                }
+                .disabled(!model.style.showsCaptions)
+                Group {
+                    TextLookControls(look: $model.style.captionLook)
+                    Toggle("Avoid the action", isOn: $model.style.captionsAvoidAction)
+                        .help("Moves captions to the top while the cursor works near the bottom")
                 }
                 .disabled(!model.style.showsCaptions)
                 DisclosureGroup("Edit text") {
@@ -308,11 +359,13 @@ private struct CaptionsSection: View {
     }
 }
 
-private struct ExportControls: View {
+/// Shape preset, resolution, export and sharing. Lives in the Export
+/// popover at the top right of the editor.
+struct ExportControls: View {
     @Bindable var model: ProjectEditorModel
 
     var body: some View {
-        Menu("Preset for…") {
+        Menu("Preset") {
             ForEach(ExportPreset.allCases) { preset in
                 Button(preset.title) {
                     model.style.aspect = preset.aspect

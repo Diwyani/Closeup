@@ -21,10 +21,13 @@ The small decisions it makes for you, so the video looks edited without you edit
 | 🗣️ | **Hears you talking** | Takes the quietest 10% of the mic as the room. Anything 12 dB louder is speech; gaps under 0.35 s are one sentence. |
 | ✂️ | **Never cuts you off** | Speed-ups and cuts skip anything with your voice, a click, a keystroke or mouse movement. |
 | ⏩ | **Fast-forwards waits, doesn't delete them** | Quiet waits of 3 s+ are sped up (4×), not cut, so you still see the page load. Voice pitch stays normal. |
+| ✂️ | **Drops the "um"s** | Cuts filler words (um, uh, erm) and short bursts of voice no word covers, without touching real words. |
 | ✂️ | **Trims dead air** | Quiet pauses of 1.5 to 3 s are cut, keeping 0.3 s on each side so it doesn't feel jumpy. |
 | ✂️ | **Finds the real start and end** | Auto-trim keeps 0.5 s before your first action or word to 1 s after your last, ignoring the reach for Stop. |
-| ✋ | **Your edits win** | Move or delete any zoom, cut or speed-up and the automatic ones step aside. Reset brings them back. |
+| ✋ | **Your edits win** | Your own cuts and speed-ups are kept; automatic ones fill in around them. Delete one and it stays gone. |
 | 💬 | **Captions that read well** | New line after a 0.6 s pause, 3 s, 7 words or a sentence end. Never overlap. Made on your Mac. |
+| 🔤 | **Text you can always read** | Titles sit on frosted glass, and the text turns white or black depending on what's behind it, checked every frame. |
+| 🔤 | **Text that gets out of the way** | If the cursor is working near the top, the title moves to the bottom (and captions move up when it's near the bottom). |
 | 🎥 | **Camera that fits** | Cropped to fill any shape, never stretched. Side by side splits 64/36 in wide videos, 50/50 in tall ones. |
 | 🎥 | **Smooth layout changes** | Bubble to full screen blends over 0.45 s, starting just before the change, so it lands on time. |
 | 🎚️ | **Broadcast-level voice** | Noise removal, rumble cut below 80 Hz, room quieted between words, loudness to about −16 LUFS, peaks never clip. |

@@ -180,7 +180,11 @@ struct EditorTimeline: View {
             .fill(.quaternary.opacity(0.6))
             .contentShape(Rectangle())
             .onTapGesture(count: 2, coordinateSpace: .named(space)) { onDoubleClick?(time($0.x, width)) }
-            .onTapGesture { model.selectedID = nil }
+            // A click moves the playhead to exactly that spot.
+            .onTapGesture(coordinateSpace: .named(space)) {
+                model.selectedID = nil
+                model.seek(to: time($0.x, width))
+            }
     }
 
     // MARK: Blocks
@@ -209,9 +213,9 @@ struct EditorTimeline: View {
             }
             .frame(width: blockWidth, height: rowHeight)
             .offset(x: left)
-            .onTapGesture {
+            .onTapGesture(coordinateSpace: .named(space)) {
                 model.selectedID = id
-                model.seek(to: start)
+                model.seek(to: time($0.x, width))
             }
             .gesture(DragGesture(minimumDistance: 3, coordinateSpace: .named(space))
                 .onChanged { value in

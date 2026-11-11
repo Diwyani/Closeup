@@ -20,6 +20,11 @@ struct ProjectEditorView: View {
             }
         }
         .navigationTitle(project.displayName)
+        .toolbar {
+            if let model {
+                ToolbarItem(placement: .primaryAction) { ExportButton(model: model) }
+            }
+        }
         .task {
             // Files can take a moment to settle right after recording, so try a few times.
             for attempt in 1...4 {
@@ -33,6 +38,36 @@ struct ProjectEditorView: View {
             }
         }
         .onDisappear { model?.player.pause() }
+    }
+}
+
+/// The editor's main action: always visible at the top right. Opens the
+/// export options; shows progress while exporting.
+private struct ExportButton: View {
+    @Bindable var model: ProjectEditorModel
+    @State private var isOpen = false
+
+    var body: some View {
+        Button { isOpen.toggle() } label: {
+            if let progress = model.exportProgress {
+                Label("Exporting \(progress.formatted(.percent.precision(.fractionLength(0))))",
+                      systemImage: "square.and.arrow.up")
+                    .monospacedDigit()
+            } else {
+                Label("Export", systemImage: "square.and.arrow.up")
+            }
+        }
+        .labelStyle(.titleAndIcon)
+        .buttonStyle(.borderedProminent)
+        .help("Export the finished video")
+        .popover(isPresented: $isOpen, arrowEdge: .bottom) {
+            Form {
+                ExportControls(model: model)
+            }
+            .formStyle(.grouped)
+            .frame(width: 340)
+            .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 

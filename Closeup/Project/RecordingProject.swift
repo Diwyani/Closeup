@@ -68,11 +68,30 @@ struct RecordingProject: Identifiable, Hashable {
     /// All projects in the library, newest first. (Used by the Phase 2 project list.)
     static func all() -> [RecordingProject] {
         let folders = (try? FileManager.default.contentsOfDirectory(
-            at: libraryFolder, includingPropertiesForKeys: nil, options: .skipsHiddenFiles)) ?? []
+            at: libraryFolder, includingPropertiesForKeys: [.creationDateKey], options: .skipsHiddenFiles)) ?? []
+        // Newest first, by when the folder was made, so renamed ones stay in place.
+        func created(_ project: RecordingProject) -> Date {
+            (try? project.folder.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
+        }
         return folders
             .map(RecordingProject.init(folder:))
             .filter { FileManager.default.fileExists(atPath: $0.metadataURL.path) }
-            .sorted { $0.name > $1.name }
+            .sorted { created($0) > created($1) }
+    }
+
+    /// Renames the recording's folder (what the sidebar and Finder show).
+    /// Returns the project at its new place.
+    func renamed(to title: String) throws -> RecordingProject {
+        let cleaned = title
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty, !cleaned.hasPrefix(".") else { throw CocoaError(.fileWriteInvalidFileName) }
+        let destination = folder.deletingLastPathComponent().appending(path: cleaned, directoryHint: .isDirectory)
+        guard destination != folder else { return self }
+        guard !FileManager.default.fileExists(atPath: destination.path) else { throw CocoaError(.fileWriteFileExists) }
+        try FileManager.default.moveItem(at: folder, to: destination)
+        return RecordingProject(folder: destination)
     }
 
     // MARK: Reading and writing

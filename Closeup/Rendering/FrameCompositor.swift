@@ -87,32 +87,154 @@ struct FrameCompositor: Sendable {
         }
         for overlay in style.textOverlays {
             let opacity = overlay.opacity(at: time)
-            guard opacity > 0, !overlay.text.isEmpty, var text = CaptionRenderer.image(
-                for: overlay.text, fontSize: 72 * unit * overlay.size, maxWidth: bounds.width * 0.85,
-                weight: .bold, background: overlay.hasBackground)
+            guard opacity > 0, !overlay.text.isEmpty else { continue }
+            let fontSize = 72 * unit * overlay.size
+            guard let mask = CaptionRenderer.image(
+                for: overlay.text, fontSize: fontSize, maxWidth: bounds.width * 0.85, weight: overlay.look.weight.font)
             else { continue }
-            let height = text.extent.height
-            let y: CGFloat = switch overlay.position {
+
+            var position = overlay.position
+            if overlay.avoidsAction, position != .center {
+                let busy = actionBands(from: overlay.start, to: overlay.end, sourceSize: sourceSize)
+                if position == .top, busy.top, !busy.bottom { position = .bottom }
+                else if position == .bottom, busy.bottom, !busy.top { position = .top }
+            }
+            let height = mask.extent.height
+            let y: CGFloat = switch position {
             case .top: bounds.height * 0.92 - height
             case .center: bounds.midY - height / 2
             case .bottom: bounds.height * 0.18
             }
-            text = text.transformed(by: CGAffineTransform(translationX: bounds.midX - text.extent.width / 2, y: y))
-            if opacity < 1 {
-                text = text.applyingFilter("CIColorMatrix", parameters: [
-                    "inputAVector": CIVector(x: 0, y: 0, z: 0, w: opacity),
-                ])
+            if overlay.dimsBehind {
+                image = CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: 0.45 * opacity)).cropped(to: bounds)
+                    .composited(over: image)
             }
-            image = text.composited(over: image)
+            image = drawText(
+                mask, at: CGPoint(x: bounds.midX - mask.extent.width / 2, y: y),
+                look: overlay.look, fontSize: fontSize, opacity: opacity, over: image)
         }
-        if style.showsCaptions, let caption = style.captions?.first(where: { time >= $0.start && time < $0.end }),
-           let text = CaptionRenderer.image(
-               for: caption.text, fontSize: 44 * unit * style.captionSize, maxWidth: bounds.width * 0.8) {
-            let x = bounds.midX - text.extent.width / 2
-            let y = bounds.height * 0.07
-            image = text.transformed(by: CGAffineTransform(translationX: x, y: y)).composited(over: image)
+        if style.showsCaptions, let caption = style.captions?.first(where: { time >= $0.start && time < $0.end }) {
+            let fontSize = 44 * unit * style.captionSize
+            if let mask = CaptionRenderer.image(
+                for: caption.text, fontSize: fontSize, maxWidth: bounds.width * 0.8, weight: style.captionLook.weight.font) {
+                var y = bounds.height * 0.07
+                if style.captionsAvoidAction {
+                    let busy = actionBands(from: caption.start, to: caption.end, sourceSize: sourceSize)
+                    if busy.bottom, !busy.top { y = bounds.height * 0.93 - mask.extent.height }
+                }
+                image = drawText(
+                    mask, at: CGPoint(x: bounds.midX - mask.extent.width / 2, y: y),
+                    look: style.captionLook, fontSize: fontSize, opacity: 1, over: image)
+            }
         }
         return image.cropped(to: bounds)
+    }
+
+    // MARK: Text
+
+    /// Draws white text `mask` at `origin` with its box, in a colour that
+    /// reads well on what's behind it.
+    private func drawText(
+        _ mask: CIImage, at origin: CGPoint, look: TextLook, fontSize: CGFloat, opacity: CGFloat, over image: CIImage
+    ) -> CIImage {
+        let mask = mask.transformed(by: CGAffineTransform(translationX: origin.x, y: origin.y))
+        let rect = mask.extent
+        let radius = fontSize * 0.45
+
+        // The box, and what the text ends up sitting on (to judge contrast).
+        var box: CIImage?
+        switch look.box {
+        case .none:
+            break
+        case .glass:
+            let frosted = image.clampedToExtent().applyingGaussianBlur(sigma: fontSize * 0.5).cropped(to: rect)
+            box = Self.solid(look.boxColor, alpha: look.boxOpacity, in: rect).composited(over: frosted)
+        case .dark:
+            box = Self.solid(RGBAColor(hex: 0x000000), alpha: look.boxOpacity, in: rect)
+        case .light:
+            box = Self.solid(RGBAColor(hex: 0xFFFFFF), alpha: look.boxOpacity, in: rect)
+        case .custom:
+            box = Self.solid(look.boxColor, alpha: look.boxOpacity, in: rect)
+        }
+        box = box.map { Self.rounded($0, rect: rect, radius: radius) }
+        let behind = (box ?? CIImage.empty()).composited(over: image.cropped(to: rect))
+
+        // Text colour: chosen on the GPU from the average brightness behind it.
+        let fill = look.autoColor ? Self.contrastColor(on: behind) : CIImage(color: look.textColor.ciColor)
+        var text = Self.paint(fill, through: mask)
+        if look.box == .none {
+            // A soft shadow in the opposite colour, so plain text reads on anything.
+            let shadowColor = fill.applyingFilter("CIColorInvert")
+                .applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: 0.6)])
+            let shadow = Self.paint(shadowColor, through: mask)
+                .applyingGaussianBlur(sigma: fontSize * 0.12)
+                .transformed(by: CGAffineTransform(translationX: 0, y: -fontSize * 0.04))
+            text = text.composited(over: shadow)
+        }
+
+        var layer = text
+        if let box { layer = text.composited(over: box) }
+        if opacity < 1 {
+            layer = layer.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: opacity)])
+        }
+        return layer.composited(over: image)
+    }
+
+    /// White on dark backgrounds, black on light ones, worked out per frame
+    /// on the GPU (no waiting for the CPU).
+    private static func contrastColor(on behind: CIImage) -> CIImage {
+        let average = behind.applyingFilter("CIAreaAverage", parameters: [
+            kCIInputExtentKey: CIVector(cgRect: behind.extent),
+        ])
+        // Brightness (linear light), turned into 1 for dark (white text) or
+        // 0 for light (black text), with a quick blend around the middle.
+        let k: CGFloat = 20, threshold: CGFloat = 0.3
+        let row = CIVector(x: -k * 0.2126, y: -k * 0.7152, z: -k * 0.0722, w: 0)
+        return average
+            .applyingFilter("CIColorMatrix", parameters: [
+                "inputRVector": row, "inputGVector": row, "inputBVector": row,
+                "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 0),
+                "inputBiasVector": CIVector(x: k * threshold, y: k * threshold, z: k * threshold, w: 1),
+            ])
+            .applyingFilter("CIColorClamp")
+            .clampedToExtent()
+    }
+
+    /// `color` (any image) shown only where `mask` has letters.
+    private static func paint(_ color: CIImage, through mask: CIImage) -> CIImage {
+        color.clampedToExtent().cropped(to: mask.extent).applyingFilter("CIBlendWithAlphaMask", parameters: [
+            kCIInputBackgroundImageKey: CIImage(color: .clear).cropped(to: mask.extent),
+            kCIInputMaskImageKey: mask,
+        ])
+    }
+
+    private static func solid(_ color: RGBAColor, alpha: Double, in rect: CGRect) -> CIImage {
+        CIImage(color: CIColor(red: color.r, green: color.g, blue: color.b, alpha: alpha)).cropped(to: rect)
+    }
+
+    private static func rounded(_ image: CIImage, rect: CGRect, radius: CGFloat) -> CIImage {
+        image.applyingFilter("CIBlendWithAlphaMask", parameters: [
+            kCIInputBackgroundImageKey: CIImage(color: .clear).cropped(to: rect),
+            kCIInputMaskImageKey: roundedRect(rect, radius: radius, color: .white),
+        ])
+    }
+
+    /// Whether the cursor works near the top or bottom of the visible view
+    /// at any point in this stretch (checked every quarter second). Decided
+    /// once per title, so it never jumps while showing.
+    private func actionBands(from start: Double, to end: Double, sourceSize: CGSize) -> (top: Bool, bottom: Bool) {
+        guard let cursor else { return (false, false) }
+        var top = false, bottom = false
+        for t in stride(from: start, through: end, by: 0.25) {
+            let point = cursor.position(at: t)
+            let view = visibleRect(at: t, sourceSize: sourceSize)
+            let y = (point.y * sourceScale - view.minY) / view.height
+            let x = (point.x * sourceScale - view.minX) / view.width
+            guard (0...1).contains(x), (0...1).contains(y) else { continue }
+            if y < 0.3 { top = true }
+            if y > 0.7 { bottom = true }
+        }
+        return (top, bottom)
     }
 
     // MARK: Camera picture

@@ -35,7 +35,7 @@ private struct RecordButton: View {
         case .idle: "Record"
         case .countdown: "Cancel"
         case .recording: "Stop"
-        case .saving: "Saving…"
+        case .saving: "Saving"
         }
     }
 

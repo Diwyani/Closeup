@@ -4,6 +4,8 @@ import SwiftUI
 /// shows the recorder or the editor for the selected recording.
 struct MainWindowView: View {
     @Environment(AppState.self) private var appState
+    @State private var renaming: RecordingProject?
+    @State private var newName = ""
 
     var body: some View {
         @Bindable var appState = appState
@@ -17,6 +19,10 @@ struct MainWindowView: View {
                         Label(project.displayName, systemImage: "film")
                             .tag(SidebarItem.project(project))
                             .contextMenu {
+                                Button("Rename") {
+                                    newName = project.displayName
+                                    renaming = project
+                                }
                                 Button("Show in Finder") { appState.reveal(project) }
                                 Divider()
                                 Button("Move to Trash", role: .destructive) { appState.moveToTrash(project) }
@@ -25,6 +31,17 @@ struct MainWindowView: View {
                 }
             }
             .navigationSplitViewColumnWidth(min: 200, ideal: 240)
+            .alert("Rename recording", isPresented: Binding(
+                get: { renaming != nil }, set: { if !$0 { renaming = nil } }
+            )) {
+                TextField("Name", text: $newName)
+                Button("Rename") {
+                    if let project = renaming { appState.rename(project, to: newName) }
+                    renaming = nil
+                }
+                .keyboardShortcut(.defaultAction)
+                Button("Cancel", role: .cancel) { renaming = nil }
+            }
         } detail: {
             switch appState.sidebarSelection {
             case .project(let project):

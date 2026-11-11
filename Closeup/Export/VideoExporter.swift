@@ -27,14 +27,16 @@ enum ExportPreset: String, CaseIterable, Identifiable {
 }
 
 enum ExportResolution: String, CaseIterable, Identifiable, Sendable {
+    case hd720 = "720p"
     case hd1080 = "1080p"
     case uhd4K = "4K"
 
     var id: Self { self }
 
-    /// Short side of the video: 1080 or 2160 pixels.
+    /// Short side of the video: 720, 1080 or 2160 pixels.
     var shortSide: Double {
         switch self {
+        case .hd720: 720
         case .hd1080: 1080
         case .uhd4K: 2160
         }
@@ -50,6 +52,7 @@ enum ExportResolution: String, CaseIterable, Identifiable, Sendable {
     /// compression artefacts quickly.
     var bitrate: Int {
         switch self {
+        case .hd720: 10_000_000
         case .hd1080: 20_000_000
         case .uhd4K: 60_000_000
         }

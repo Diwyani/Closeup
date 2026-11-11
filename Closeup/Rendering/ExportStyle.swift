@@ -78,8 +78,13 @@ struct ExportStyle: Codable, Equatable, Sendable {
     var cutsSilence = false
     /// Pauses at least this long are cut (seconds).
     var silenceLength = 1.5
-    /// Cuts and speed-ups edited on the timeline. nil = use the automatic ones.
+    /// Cut "um", "uh" and similar sounds (needs captions).
+    var removesFillers = false
+    /// Cuts and speed-ups you made or changed on the timeline. Automatic ones
+    /// fill in around them.
     var timeEdits: [TimeEdit]?
+    /// Automatic edits you deleted or changed, so they don't come back.
+    var dismissedEdits: [TimeEdit] = []
 
     /// The part of the recording to keep, in seconds. nil end = to the end.
     var trimStart = 0.0
@@ -125,6 +130,9 @@ struct ExportStyle: Codable, Equatable, Sendable {
     var showsCaptions = true
     /// Multiplier on the caption text size.
     var captionSize = 1.0
+    var captionLook = TextLook(box: .dark, boxOpacity: 0.72, weight: .semibold)
+    /// Move captions to the top while the cursor works near the bottom.
+    var captionsAvoidAction = true
 
     /// Use the cleaned-up microphone (noise reduced, even loudness).
     var cleansAudio = false
@@ -168,7 +176,9 @@ struct ExportStyle: Codable, Equatable, Sendable {
         idleSpeed = try c.decodeIfPresent(Double.self, forKey: .idleSpeed) ?? d.idleSpeed
         cutsSilence = try c.decodeIfPresent(Bool.self, forKey: .cutsSilence) ?? d.cutsSilence
         silenceLength = try c.decodeIfPresent(Double.self, forKey: .silenceLength) ?? d.silenceLength
+        removesFillers = try c.decodeIfPresent(Bool.self, forKey: .removesFillers) ?? d.removesFillers
         timeEdits = try c.decodeIfPresent([TimeEdit].self, forKey: .timeEdits)
+        dismissedEdits = try c.decodeIfPresent([TimeEdit].self, forKey: .dismissedEdits) ?? d.dismissedEdits
         trimStart = try c.decodeIfPresent(Double.self, forKey: .trimStart) ?? d.trimStart
         trimEnd = try c.decodeIfPresent(Double.self, forKey: .trimEnd)
         autoTrim = try c.decodeIfPresent(Bool.self, forKey: .autoTrim) ?? d.autoTrim
@@ -183,6 +193,8 @@ struct ExportStyle: Codable, Equatable, Sendable {
         captions = try c.decodeIfPresent([Caption].self, forKey: .captions)
         showsCaptions = try c.decodeIfPresent(Bool.self, forKey: .showsCaptions) ?? d.showsCaptions
         captionSize = try c.decodeIfPresent(Double.self, forKey: .captionSize) ?? d.captionSize
+        captionLook = try c.decodeIfPresent(TextLook.self, forKey: .captionLook) ?? d.captionLook
+        captionsAvoidAction = try c.decodeIfPresent(Bool.self, forKey: .captionsAvoidAction) ?? d.captionsAvoidAction
         cleansAudio = try c.decodeIfPresent(Bool.self, forKey: .cleansAudio) ?? d.cleansAudio
         microphoneVolume = try c.decodeIfPresent(Double.self, forKey: .microphoneVolume) ?? d.microphoneVolume
         systemVolume = try c.decodeIfPresent(Double.self, forKey: .systemVolume) ?? d.systemVolume

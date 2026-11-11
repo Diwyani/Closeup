@@ -185,7 +185,7 @@ final class AppState {
         case .idle: "Start Recording"
         case .countdown: "Cancel Countdown"
         case .recording: "Stop Recording"
-        case .saving: "Saving…"
+        case .saving: "Saving"
         }
     }
 
@@ -333,6 +333,20 @@ final class AppState {
         let folder = RecordingProject.libraryFolder
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         NSWorkspace.shared.open(folder)
+    }
+
+    /// Renames a recording. If it's open, the editor reopens it at its new place.
+    func rename(_ project: RecordingProject, to title: String) {
+        do {
+            let renamed = try project.renamed(to: title)
+            let wasSelected = sidebarSelection == .project(project)
+            refreshProjects()
+            if wasSelected { sidebarSelection = .project(renamed) }
+        } catch CocoaError.fileWriteFileExists {
+            errorMessage = "There's already a recording called \"\(title)\"."
+        } catch {
+            errorMessage = "Couldn't rename the recording."
+        }
     }
 
     func reveal(_ project: RecordingProject) {
