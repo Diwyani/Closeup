@@ -8,6 +8,7 @@
 Smooth auto zoom, a tidy cursor, your face, captions. No editing skills needed.</p>
 
 <p align="center">
+  <a href="https://youtu.be/JUKBqO_KQok">Video</a> ·
   <a href="INSTALL.md">Install guide</a> ·
   <a href="#run-it">Run it</a> ·
   <a href="#how-to-use">How to use</a> ·
@@ -18,7 +19,13 @@ Smooth auto zoom, a tidy cursor, your face, captions. No editing skills needed.<
 
 <p align="center">Open source and free. Fork it, or <a href="CONTRIBUTING.md">send a pull request</a>. I review every one.</p>
 
-<!-- Add your demo video or GIF here -->
+<p align="center">
+  <a href="https://youtu.be/JUKBqO_KQok">
+    <img src="https://img.youtube.com/vi/JUKBqO_KQok/maxresdefault.jpg" width="720" alt="Watch the Closeup walkthrough on YouTube">
+  </a>
+  <br>
+  <a href="https://youtu.be/JUKBqO_KQok"><b>▶ Watch the walkthrough</b></a>: install, run, and every feature in action.
+</p>
 
 ## Features
 
