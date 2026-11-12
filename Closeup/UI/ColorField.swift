@@ -28,6 +28,8 @@ struct ColorField: View {
 struct GradientField: View {
     @Binding var start: RGBAColor
     @Binding var end: RGBAColor
+    /// All the colours, when a preset has more than two (shown on the bar).
+    var stops: [RGBAColor]?
     @State private var editing: Stop?
 
     enum Stop: Identifiable { case start, end; var id: Self { self } }
@@ -36,7 +38,7 @@ struct GradientField: View {
         HStack(spacing: 8) {
             ZStack {
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(LinearGradient(colors: [start.color, end.color], startPoint: .leading, endPoint: .trailing))
+                    .fill(LinearGradient(colors: (stops ?? [start, end]).map(\.color), startPoint: .leading, endPoint: .trailing))
                     .frame(height: 22)
                 HStack {
                     stopButton(start, .start)

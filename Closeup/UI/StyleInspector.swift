@@ -6,6 +6,11 @@ import UniformTypeIdentifiers
 struct StyleInspector: View {
     @Bindable var model: ProjectEditorModel
 
+    /// "1.2 s"
+    static func seconds(_ value: Double) -> String {
+        max(0, value).formatted(.number.precision(.fractionLength(1))) + " s"
+    }
+
     var body: some View {
         Form {
             Section("Shape") {
@@ -29,7 +34,13 @@ struct StyleInspector: View {
                 case .gradient:
                     GradientSwatches(style: $model.style)
                     LabeledContent("Colours") {
-                        GradientField(start: $model.style.gradientStart, end: $model.style.gradientEnd)
+                        // Editing either end turns a many-colour preset back into two colours.
+                        GradientField(
+                            start: Binding(get: { model.style.gradientStart },
+                                           set: { model.style.gradientStart = $0; model.style.gradientStops = nil }),
+                            end: Binding(get: { model.style.gradientEnd },
+                                         set: { model.style.gradientEnd = $0; model.style.gradientStops = nil }),
+                            stops: model.style.gradientStops)
                             .frame(width: 150)
                     }
                     ValueSlider("Angle", value: $model.style.gradientAngle, in: 0...360) { "\(Int($0))°" }
@@ -37,6 +48,55 @@ struct StyleInspector: View {
                     LabeledContent("Colour") { ColorField(color: $model.style.solidColor) }
                 case .image:
                     PictureControls(model: model)
+                }
+            }
+
+            if model.hasCamera {
+                Section("Camera") {
+                    Picker("Layout", selection: $model.style.baseLayout) {
+                        ForEach(CameraLayout.allCases, id: \.self) { Text($0.title).tag($0) }
+                    }
+                    .help("For the whole video. Layout blocks on the timeline change it for parts.")
+
+                    // Only the settings for the layouts in use.
+                    if model.usesLayout(.sideBySide) {
+                        Picker("Camera side", selection: $model.style.cameraSide) {
+                            Text("Left").tag(ExportStyle.Side.left)
+                            Text("Right").tag(ExportStyle.Side.right)
+                        }
+                        .pickerStyle(.segmented)
+                        .help("In tall videos, left puts the camera on top")
+                        ValueSlider("Camera width", value: $model.style.cameraPanelShare, in: 0.2...0.7) { "\(Int($0 * 100))%" }
+                    }
+                    if model.usesLayout(.sideBySide) || model.usesLayout(.camera) {
+                        ValueSlider("Panel corners", value: $model.style.cameraPanelRadius, in: 0...80) { "\(Int($0))" }
+                    }
+                    if model.usesLayout(.bubble) {
+                        Toggle("Show bubble", isOn: $model.style.showsCamera)
+                        Group {
+                            Picker("Corner", selection: $model.style.cameraCorner) {
+                                Image(systemName: "arrow.up.left").tag(ExportStyle.Corner.topLeft)
+                                Image(systemName: "arrow.up.right").tag(ExportStyle.Corner.topRight)
+                                Image(systemName: "arrow.down.left").tag(ExportStyle.Corner.bottomLeft)
+                                Image(systemName: "arrow.down.right").tag(ExportStyle.Corner.bottomRight)
+                            }
+                            .pickerStyle(.segmented)
+                            Picker("Shape", selection: $model.style.cameraShape) {
+                                Text("Circle").tag(ExportStyle.CameraShape.circle)
+                                Text("Square").tag(ExportStyle.CameraShape.square)
+                                Text("Tall").tag(ExportStyle.CameraShape.tall)
+                                Text("Wide").tag(ExportStyle.CameraShape.wide)
+                            }
+                            .pickerStyle(.segmented)
+                            ValueSlider("Size", value: $model.style.cameraSize, in: 0.12...0.65) { "\(Int($0 * 100))%" }
+                            if model.style.cameraShape != .circle {
+                                ValueSlider("Corners", value: $model.style.cameraRoundness, in: 0...0.5) { "\(Int($0 * 200))%" }
+                            }
+                        }
+                        .disabled(!model.style.showsCamera)
+                    }
+
+                    Toggle("Mirror", isOn: $model.style.cameraMirrored)
                 }
             }
 
@@ -51,8 +111,21 @@ struct StyleInspector: View {
                     ValueSlider("Level", value: Binding(
                         get: { selected.scale },
                         set: { var zoom = selected; zoom.scale = $0; model.updateZoom(zoom) }
-                    ), in: 1.25...3.5) {
+                    ), in: 1.25...5) {
                         $0.formatted(.number.precision(.fractionLength(1))) + "×"
+                    }
+                    ZoomTargetMap(model: model, zoom: selected)
+                    Toggle("Follow cursor", isOn: Binding(
+                        get: { selected.followsCursor == true },
+                        set: { var zoom = selected; zoom.followsCursor = $0; model.updateZoom(zoom) }
+                    ))
+                    .help("Off: the zoom holds still on its target. On: it follows your cursor around.")
+                    if selected.focus != nil {
+                        Button("Automatic target") {
+                            var zoom = selected
+                            zoom.focus = nil
+                            model.updateZoom(zoom)
+                        }
                     }
                     Button("Delete zoom", role: .destructive) { model.deleteSelected() }
                 }
@@ -126,17 +199,35 @@ struct StyleInspector: View {
                 Toggle("Auto-trim start & end", isOn: Binding(
                     get: { model.style.autoTrim }, set: { model.setAutoTrim($0) }))
                     .help("Keeps from just before your first click, keystroke or word to just after your last. Turn off for the whole recording.")
+                if model.style.autoTrim {
+                    let cut = model.trimStart + (model.duration - model.trimEnd)
+                    TimingNote(cut < 0.05
+                        ? "Nothing to trim: there's no click, keystroke or word near the start or end."
+                        : "Trimmed \(Self.seconds(model.trimStart)) from the start and \(Self.seconds(model.duration - model.trimEnd)) from the end (yellow Clip bar).")
+                }
                 Group {
                     Toggle("Speed up long waits", isOn: $model.style.speedUpIdle)
                     ValueSlider("Speed", value: $model.style.idleSpeed, in: 2...10) {
                         $0.formatted(.number.precision(.fractionLength(0))) + "×"
                     }
                     .disabled(!model.style.speedUpIdle)
+                    if model.style.speedUpIdle {
+                        let count = model.automaticEditCount(.speed)
+                        TimingNote(count > 0
+                            ? "\(count) speed-up\(count == 1 ? "" : "s") on the timeline (orange)."
+                            : "No quiet waits of 3 s or longer in this recording.")
+                    }
                     Toggle("Cut pauses", isOn: $model.style.cutsSilence)
                     ValueSlider("Pause length", value: $model.style.silenceLength, in: 0.8...3) {
                         $0.formatted(.number.precision(.fractionLength(1))) + " s"
                     }
                     .disabled(!model.style.cutsSilence)
+                    if model.style.cutsSilence || model.style.removesFillers {
+                        let count = model.automaticEditCount(.cut)
+                        TimingNote(count > 0
+                            ? "\(count) cut\(count == 1 ? "" : "s") on the timeline (red)."
+                            : "No pauses of \(model.style.silenceLength.formatted(.number.precision(.fractionLength(1)))) s or longer without moving, clicking or talking.")
+                    }
                     if model.hasMicrophone {
                         Toggle("Remove filler sounds (um, uh)", isOn: $model.style.removesFillers)
                             .disabled(!model.canRemoveFillers)
@@ -189,34 +280,6 @@ struct StyleInspector: View {
                 .disabled(!model.style.showsCursor)
             }
 
-            if model.hasCamera {
-                Section("Camera") {
-                    Toggle("Show camera", isOn: $model.style.showsCamera)
-                    // Only the settings grey out, never the switch itself.
-                    Group {
-                        Picker("Corner", selection: $model.style.cameraCorner) {
-                            Image(systemName: "arrow.up.left").tag(ExportStyle.Corner.topLeft)
-                            Image(systemName: "arrow.up.right").tag(ExportStyle.Corner.topRight)
-                            Image(systemName: "arrow.down.left").tag(ExportStyle.Corner.bottomLeft)
-                            Image(systemName: "arrow.down.right").tag(ExportStyle.Corner.bottomRight)
-                        }
-                        .pickerStyle(.segmented)
-                        Picker("Shape", selection: $model.style.cameraShape) {
-                            Text("Circle").tag(ExportStyle.CameraShape.circle)
-                            Text("Square").tag(ExportStyle.CameraShape.square)
-                            Text("Tall").tag(ExportStyle.CameraShape.tall)
-                            Text("Wide").tag(ExportStyle.CameraShape.wide)
-                        }
-                        .pickerStyle(.segmented)
-                        ValueSlider("Size", value: $model.style.cameraSize, in: 0.12...0.65) { "\(Int($0 * 100))%" }
-                        if model.style.cameraShape != .circle {
-                            ValueSlider("Corners", value: $model.style.cameraRoundness, in: 0...0.5) { "\(Int($0 * 200))%" }
-                        }
-                        Toggle("Mirror", isOn: $model.style.cameraMirrored)
-                    }
-                    .disabled(!model.style.showsCamera)
-                }
-            }
 
             if model.hasMicrophone {
                 CaptionsSection(model: model)
@@ -242,6 +305,66 @@ struct StyleInspector: View {
 
         }
         .formStyle(.grouped)
+    }
+}
+
+/// The whole screen, small, with the zoom's view drawn on it. Drag the box
+/// to choose exactly where the zoom goes.
+private struct ZoomTargetMap: View {
+    @Bindable var model: ProjectEditorModel
+    let zoom: ZoomSegment
+
+    var body: some View {
+        if let map = model.screenMap {
+            let aspect = CGFloat(map.width) / CGFloat(map.height)
+            GeometryReader { geometry in
+                let size = geometry.size
+                let box = CGSize(width: size.width / zoom.scale, height: size.height / zoom.scale)
+                let target = model.zoomTarget(zoom)
+                ZStack(alignment: .topLeading) {
+                    Image(decorative: map, scale: 1)
+                        .resizable()
+                        .frame(width: size.width, height: size.height)
+                        .opacity(0.55)
+                    if let target {
+                        RoundedRectangle(cornerRadius: 3)
+                            .strokeBorder(Color.accentColor, lineWidth: 2)
+                            .background(Color.accentColor.opacity(0.15))
+                            .frame(width: box.width, height: box.height)
+                            .position(
+                                x: min(max(target.x * size.width, box.width / 2), size.width - box.width / 2),
+                                y: min(max(target.y * size.height, box.height / 2), size.height - box.height / 2))
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 0).onChanged { value in
+                    var changed = zoom
+                    changed.focus = CGPoint(
+                        x: min(max(value.location.x / size.width, 0), 1),
+                        y: min(max(value.location.y / size.height, 0), 1))
+                    changed.followsCursor = false
+                    model.updateZoom(changed)
+                })
+            }
+            .aspectRatio(aspect, contentMode: .fit)
+            .help("Drag to choose where this zoom looks")
+            Text(zoom.followsCursor == true ? "Following the cursor. Drag the map to hold still on a spot."
+                 : zoom.focus == nil ? "Automatic: the middle of what you did. Drag to choose your own."
+                 : "Your target. Drag to move it.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// A short line under a Timing switch saying what it found.
+private struct TimingNote: View {
+    let text: String
+    init(_ text: String) { self.text = text }
+
+    var body: some View {
+        Text(text).font(.caption).foregroundStyle(.secondary)
     }
 }
 
@@ -446,12 +569,13 @@ private struct GradientSwatches: View {
     @Binding var style: ExportStyle
 
     var body: some View {
-        HStack(spacing: 8) {
+        LazyVGrid(columns: Array(repeating: GridItem(.fixed(26), spacing: 10), count: 7), spacing: 10) {
             ForEach(GradientPreset.all) { preset in
-                let isSelected = style.gradientStart == preset.start && style.gradientEnd == preset.end
+                let current = style.gradientStops ?? [style.gradientStart, style.gradientEnd]
+                let isSelected = current == preset.stops
                 Circle()
                     .fill(LinearGradient(
-                        colors: [preset.start.color, preset.end.color],
+                        colors: preset.stops.map(\.color),
                         startPoint: .topLeading, endPoint: .bottomTrailing))
                     .frame(width: 26, height: 26)
                     .overlay {
@@ -459,8 +583,12 @@ private struct GradientSwatches: View {
                     }
                     .help(preset.name)
                     .onTapGesture {
-                        style.gradientStart = preset.start
-                        style.gradientEnd = preset.end
+                        var changed = style
+                        changed.gradientStart = preset.start
+                        changed.gradientEnd = preset.end
+                        changed.gradientStops = preset.stops.count > 2 ? preset.stops : nil
+                        changed.gradientAngle = preset.angle
+                        style = changed
                     }
             }
         }

@@ -33,12 +33,12 @@ Smooth auto zoom, a tidy cursor, your face, captions. No editing skills needed.<
 |---|---|
 | **Auto zoom** | Zooms in on clicks and typing and follows the cursor. Every zoom can be moved, resized or removed on the timeline. |
 | **Cursor** | Smoothed movement, adjustable size, click glow, motion blur, hides when idle. |
-| **Camera** | Live preview while recording. Circle, square, tall or wide bubble in any corner, plus full-screen and side-by-side layouts you can switch on the timeline. |
+| **Camera** | Live preview while recording. Circle, square, tall or wide bubble in any corner, full-screen and side-by-side layouts for the whole video or parts of it. |
 | **Audio** | Microphone and system audio. Optional voice cleanup: noise removal and even loudness (about −16 LUFS). |
 | **Captions** | Generated on your Mac from your voice, with word timing. Edit the text and style them: glass, dark, light or coloured box, text colour, weight. |
 | **Timeline** | Trim, cuts, speed-ups, camera layouts and text titles. Titles always stay readable: frosted glass box, automatic text colour, optional dim behind, and they move out of the way of your cursor. |
 | **Smart edits** | Auto-trim dead time at the start and end, speed up long waits, cut short pauses, remove filler sounds (um, uh). Never cuts the words you're saying. |
-| **Look** | Gradient, solid colour or picture background (any image or your wallpaper, with blur and dim). Figma-style colour picker with eyedropper. Padding, rounded corners, shadow. |
+| **Look** | Gradient (13 diagonal presets, including multi-colour ones), solid colour or picture background (any image or your wallpaper, with blur and dim). Figma-style colour picker with eyedropper. Padding, rounded corners, shadow. |
 | **Export** | One click from the Export button at the top right. MP4 (H.264 + AAC) at a steady 60 fps, 720p, 1080p or 4K, in 16:9, 9:16, 1:1 or 4:3. One-click presets for YouTube, X, LinkedIn and Shorts/Reels/TikTok. |
 | **Share** | Drag the finished video into any app or browser tab, copy it to paste anywhere, or use the macOS share menu. |
 | **Editing comfort** | Changes show instantly while paused. Undo and redo everything with ⌘Z and ⇧⌘Z. |
@@ -101,7 +101,18 @@ After allowing Screen Recording, quit and reopen Closeup so macOS applies it.
 2. Press **Record** (or **⌥⇧⌘R** from anywhere). A 3-2-1 countdown starts.
 3. Stop from the menu bar icon or with **⌥⇧⌘R** again. The editor opens.
 4. Adjust the look on the right and edit on the timeline at the bottom.
-5. Click **Export MP4**. The file is saved in the recording's folder; **Show in Finder** takes you there.
+5. Click **Export** at the top right. The file is saved in the recording's folder; **Show in Finder** takes you there.
+
+**Editor shortcuts**
+
+| Key | Does |
+|---|---|
+| **Space** | Play or pause |
+| **I** / **O** | Trim the start / end to the playhead |
+| **⌘Z** / **⇧⌘Z** | Undo / redo |
+| **Delete** | Remove the selected zoom, cut, speed-up, layout or title |
+
+Drag the red handle above the timeline, or click anywhere on a row, to move through the video.
 
 Recordings are kept in `~/Movies/Closeup`, one folder per recording. Your original files are never changed: every edit is stored in a small `style.json` next to them.
 
@@ -132,9 +143,10 @@ Everything Closeup does automatically, and the rules behind it. For a one-screen
 | **How close typing zooms** | Closer than clicks, so small text is readable: "Typing zoom", 3× by default (1.25–5×). A zoom with typing in it uses the typing level. |
 | **Start and end** | Starts zooming 0.5 s before the first action. Holds 1.5 s after the last. |
 | **One zoom or several** | Actions under 3 s apart keep the same zoom going. Zooms under 1 s apart join, so it never zooms out and straight back in. |
-| **How close** | 2× by default ("Zoom level", 1.25–3.5×). Each zoom can have its own level. |
+| **How close** | 2× by default ("Zoom level", 1.25–3.5×). Each zoom can have its own level (1.25–5×): select it and use the slider under the timeline. |
 | **Movement** | Spring motion with no overshoot, simulated 120 times a second. Zoom settles at about 0.9 cycles a second, panning at about 0.8, both scaled by "Speed". |
-| **Following** | Zoomed out, it follows the cursor freely. Zoomed in, it only pans when the cursor (or typing spot) leaves the middle 55% of the view. |
+| **Holding still** | Each zoom holds still on the middle of what you clicked or typed during it, if that all fits in 80% of the zoomed view. Otherwise it follows the cursor, panning only when the cursor (or typing spot) leaves the middle 55% of the view. |
+| **Your target** | Select a zoom and drag the box on the screen map in the panel to choose exactly where it looks. "Follow cursor" makes that zoom follow instead. |
 | **Typing focus** | If you typed in the last 1 s, it looks at where you're typing, not at the mouse. |
 | **Edges** | It never shows past the edge of the screen. |
 
@@ -178,7 +190,7 @@ Used so automatic edits never cut you off.
 |---|---|
 | **Start** | 0.5 s before your first click, keystroke or word. |
 | **End** | 1 s after your last one. The final 1.5 s is ignored, since that's you reaching for Stop. |
-| **When** | Only when you click **Auto-trim start & end**. You can still drag the yellow handles afterwards. |
+| **When** | When you switch on **Auto-trim start & end**. The trimmed parts show as yellow "Trim" blocks on the Edits row. Drag the yellow grips (or press I and O) to change it. |
 
 ### Captions
 
@@ -198,8 +210,9 @@ Used so automatic edits never cut you off.
 | **Bubble** | Bottom-right by default, 24% of the video's short side (12–65%), 40 px from the edges. Mirrored by default. |
 | **Shapes** | Circle and square are 1:1, tall is 4:5, wide is 4:3. Non-circle corners are 18% rounded by default. |
 | **Picture** | The camera image is cropped to fill the shape, never stretched. |
+| **Whole-video layout** | Camera → Layout sets the layout for the entire video (Bubble, Side by side, Camera only, Screen only). Layout blocks on the timeline change it for parts. |
 | **Camera only** | The camera fills the padded area with the frame's rounded corners. |
-| **Side by side** | In wide videos the screen takes 64% and the camera the rest, side by side. In tall videos it's 50/50, screen on top. 24 px gap. |
+| **Side by side** | A camera panel beside the screen, the same height as the screen so they line up (the same width in tall videos). Camera on the left (default) or right, 40% of the width by default (20–70%). In tall videos, left puts the camera on top. 24 px gap, panel corners adjustable. |
 | **Screen only** | The camera fades out. |
 | **Switching** | Layouts blend over 0.45 s with an ease-in-out curve, starting just before the block on the timeline. |
 | **New block** | 3 s of "Camera only" at the playhead. |

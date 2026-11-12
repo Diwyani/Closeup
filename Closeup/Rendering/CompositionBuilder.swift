@@ -34,6 +34,14 @@ final class LiveCompositor: Sendable {
 
     private static let stillContext = CIContext(options: [.cacheIntermediates: false])
 
+    /// The raw screen of the last frame, small, with no zoom or styling.
+    func screenThumbnail(width: CGFloat) -> CGImage? {
+        guard let screen = lastFrame?.screen else { return nil }
+        let scale = width / screen.extent.width
+        let small = screen.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+        return Self.stillContext.createCGImage(small, from: small.extent)
+    }
+
     /// Draws `frame` with the current settings into a finished picture.
     ///
     /// The video's pixels are written as sRGB but played back as Rec. 709,

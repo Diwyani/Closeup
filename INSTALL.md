@@ -73,16 +73,21 @@ Below the screen picker, choose your **camera** and **microphone**, and tick **S
 
 You're ready. Press **Record**, and stop with **⌥⇧⌘R** or the menu bar icon. The editor opens by itself.
 
-## Keep it in your Applications folder (optional)
+## Put it in Applications, then never open Xcode again
 
-Closeup runs from Xcode's build folder. To open it without Xcode:
+Right after step 6, while Closeup is open:
 
-1. In Xcode: **Product → Show Build Folder in Finder**.
-2. Open **Products → Debug**, and drag **Closeup** into your **Applications** folder.
+1. In the **Dock**, right-click the **Closeup** icon → **Options** → **Show in Finder**. A Finder window opens with Closeup already selected.
+2. Drag that **Closeup** onto **Applications** in the Finder window's sidebar.
+3. Quit Closeup and Xcode.
+
+That's it. From now on, open Closeup like any other app: press **⌘ Space**, type **Closeup**, press Return. To keep it in the Dock, right-click its Dock icon → **Options** → **Keep in Dock**.
+
+You only need Xcode again to get a newer version (see below).
 
 ## Getting updates
 
-Download the ZIP again (step 2), replace the old folder, and press **⌘R** in Xcode. Your recordings stay safe in `~/Movies/Closeup`.
+Download the ZIP again (step 2), replace the old folder, press **⌘R** in Xcode, then put the new Closeup in Applications again (replace the old one). Your recordings stay safe in `~/Movies/Closeup`.
 
 ## If something goes wrong
 
@@ -92,5 +97,6 @@ Download the ZIP again (step 2), replace the old folder, and press **⌘R** in X
 | "Bundle identifier is not available" | Change it to something unique, like `com.yourname.closeup` (step 5). |
 | Build Failed | Click the red error count at the top of Xcode to see the reason. Usually step 5. |
 | The recording is black | Screen Recording isn't on yet, or Closeup wasn't relaunched after turning it on (step 7). |
-| Closeup won't open after a week or so | Apps built with a free Apple ID can expire. Open the project and press **⌘R** again. |
+| Closeup won't open after a long time | The signing from a free Apple ID lasts about a year. Open the project, press **⌘R**, and put the new copy in Applications. |
+| Can't find "Show in Finder" | Closeup has to be open. Press **⌘R** in Xcode first, then right-click its icon in the Dock. |
 | Something else | [Open an issue](https://github.com/Diwyani/Closeup/issues/new/choose) with a screenshot. |

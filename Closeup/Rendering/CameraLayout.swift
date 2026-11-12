@@ -16,7 +16,7 @@ enum CameraLayout: String, Codable, CaseIterable, Sendable {
 }
 
 /// A stretch of the recording with its own layout (e.g. full-screen camera
-/// for an intro). Outside these, the camera is a bubble.
+/// for an intro). Outside these, the whole-video layout applies.
 struct LayoutSegment: Codable, Equatable, Sendable, Identifiable {
     var id = UUID()
     var start: Double
@@ -32,6 +32,9 @@ struct LayoutGeometry {
     var cameraRect: CGRect
     var cameraRadius: CGFloat
     var cameraOpacity: CGFloat
+    /// 1 = the camera panel takes the screen's exact height (side by side),
+    /// so both panels line up. Blends with the other values.
+    var matchesScreen: CGFloat = 0
 
     /// How long a layout change takes, in seconds.
     static let transition = 0.45
@@ -50,7 +53,7 @@ struct LayoutGeometry {
             x: isLeft ? margin : bounds.width - margin - width,
             y: isTop ? bounds.height - margin - height : margin,
             width: width, height: height)
-        let radius = style.cornerRadius * unit
+        let radius = style.cameraPanelRadius * unit
 
         switch layout {
         case .bubble:
@@ -62,25 +65,31 @@ struct LayoutGeometry {
         case .camera:
             return LayoutGeometry(screenArea: padded, cameraRect: padded, cameraRadius: radius, cameraOpacity: 1)
         case .sideBySide:
-            // Screen gets about two thirds; the camera the rest. Wide videos
-            // split left/right, tall ones top/bottom.
+            // A full-height camera panel beside the screen, on the side you
+            // choose. Wide videos split left/right, tall ones top/bottom
+            // (left = camera on top).
             let gap = 24 * unit
+            let share = min(max(style.cameraPanelShare, 0.2), 0.7)
+            let cameraFirst = style.cameraSide == .left
             if bounds.width >= bounds.height {
-                let screenWidth = (padded.width - gap) * 0.64
+                let cameraWidth = (padded.width - gap) * share
+                let screenWidth = padded.width - gap - cameraWidth
+                let cameraX = cameraFirst ? padded.minX : padded.maxX - cameraWidth
+                let screenX = cameraFirst ? padded.minX + cameraWidth + gap : padded.minX
                 return LayoutGeometry(
-                    screenArea: CGRect(x: padded.minX, y: padded.minY, width: screenWidth, height: padded.height),
-                    cameraRect: CGRect(
-                        x: padded.minX + screenWidth + gap, y: padded.minY,
-                        width: padded.width - screenWidth - gap, height: padded.height),
-                    cameraRadius: radius, cameraOpacity: 1)
+                    screenArea: CGRect(x: screenX, y: padded.minY, width: screenWidth, height: padded.height),
+                    cameraRect: CGRect(x: cameraX, y: padded.minY, width: cameraWidth, height: padded.height),
+                    cameraRadius: radius, cameraOpacity: 1, matchesScreen: 1)
             } else {
-                let screenHeight = (padded.height - gap) * 0.5
+                let cameraHeight = (padded.height - gap) * share
+                let screenHeight = padded.height - gap - cameraHeight
+                // Core Image's y goes up, so "top" is the high end.
+                let cameraY = cameraFirst ? padded.maxY - cameraHeight : padded.minY
+                let screenY = cameraFirst ? padded.minY : padded.maxY - screenHeight
                 return LayoutGeometry(
-                    screenArea: CGRect(
-                        x: padded.minX, y: padded.maxY - screenHeight, width: padded.width, height: screenHeight),
-                    cameraRect: CGRect(
-                        x: padded.minX, y: padded.minY, width: padded.width, height: padded.height - screenHeight - gap),
-                    cameraRadius: radius, cameraOpacity: 1)
+                    screenArea: CGRect(x: padded.minX, y: screenY, width: padded.width, height: screenHeight),
+                    cameraRect: CGRect(x: padded.minX, y: cameraY, width: padded.width, height: cameraHeight),
+                    cameraRadius: radius, cameraOpacity: 1, matchesScreen: 1)
             }
         }
     }
@@ -94,7 +103,8 @@ struct LayoutGeometry {
             screenArea: mix(screenArea, other.screenArea),
             cameraRect: mix(cameraRect, other.cameraRect),
             cameraRadius: mix(cameraRadius, other.cameraRadius),
-            cameraOpacity: mix(cameraOpacity, other.cameraOpacity))
+            cameraOpacity: mix(cameraOpacity, other.cameraOpacity),
+            matchesScreen: mix(matchesScreen, other.matchesScreen))
     }
 
     /// The layout at `time`: which segment is active and how far it has

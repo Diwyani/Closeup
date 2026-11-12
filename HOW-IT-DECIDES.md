@@ -10,7 +10,8 @@ The small decisions it makes for you, so the video looks edited without you edit
 | 🎙️ | **Leaves itself out** | The countdown, camera preview and Closeup's windows never appear in the video. |
 | 🔍 | **Zooms before you click** | Starts 0.5 s early, so it's already in when the click lands, and holds 1.5 s after. |
 | 🔍 | **No zoom ping-pong** | Actions under 3 s apart share one zoom, and zooms under 1 s apart join. It never pops out and straight back in. |
-| 🔍 | **Calm camera** | Zoomed in, it only pans when the cursor leaves the middle 55% of the view, instead of chasing every wiggle. |
+| 🔍 | **Calm camera** | Each zoom holds still on the middle of what you did in it, so it never wobbles. It only follows the cursor if your clicks don't fit in view. |
+| 🔍 | **Zoom where you want** | Drag a zoom's target on the screen map, or set it to follow the cursor. |
 | 🔍 | **Watches your typing** | While typing, it looks at the field you last clicked (within 10 s), not where the mouse drifted. |
 | 🔍 | **Closer for typing** | Typing zooms in closer than clicks (3× vs 2×), so small text is readable. |
 | 🔍 | **Ignores the stop shortcut** | Keystrokes in the last second don't trigger a zoom. |

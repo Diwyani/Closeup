@@ -73,6 +73,7 @@ private struct ExportButton: View {
 
 private struct EditorLayout: View {
     let model: ProjectEditorModel
+    @State private var keyMonitor: Any?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -91,6 +92,25 @@ private struct EditorLayout: View {
 
             StyleInspector(model: model)
                 .frame(width: 300)
+        }
+        .onAppear { keyMonitor = Self.monitorKeys(for: model) }
+        .onDisappear { if let keyMonitor { NSEvent.removeMonitor(keyMonitor) } }
+    }
+
+    /// Editor keys: Space plays and pauses, I and O set the trim start and
+    /// end to the playhead. Ignored while you're typing in a text field.
+    private static func monitorKeys(for model: ProjectEditorModel) -> Any? {
+        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
+                  !(NSApp.keyWindow?.firstResponder is NSText)
+            else { return event }
+            switch event.charactersIgnoringModifiers?.lowercased() {
+            case " ": model.togglePlay()
+            case "i": model.setTrimStart(model.currentTime)
+            case "o": model.setTrimEnd(model.currentTime)
+            default: return event
+            }
+            return nil
         }
     }
 }

@@ -65,3 +65,39 @@ enum BackgroundImage {
         return name
     }
 }
+
+/// Gradients with more than two colours (Core Image's gradient takes two),
+/// drawn once per size and setting, then reused.
+enum GradientImage {
+    private static let cache = NSCache<NSString, CIImage>()
+
+    /// `angle` like CSS: 0° goes up, 90° right, 180° down.
+    static func image(stops: [RGBAColor], angle: Double, size: CGSize) -> CIImage? {
+        let key = "\(stops.map(\.hex).joined(separator: ","))|\(angle)|\(Int(size.width))x\(Int(size.height))" as NSString
+        if let cached = cache.object(forKey: key) { return cached }
+
+        let space = CGColorSpace(name: CGColorSpace.sRGB)!
+        guard let context = CGContext(
+            data: nil, width: Int(size.width), height: Int(size.height), bitsPerComponent: 8, bytesPerRow: 0,
+            space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return nil }
+        let colors = stops.map { CGColor(srgbRed: $0.r, green: $0.g, blue: $0.b, alpha: $0.a) } as CFArray
+        let locations = stops.indices.map { CGFloat($0) / CGFloat(stops.count - 1) }
+        guard let gradient = CGGradient(colorsSpace: space, colors: colors, locations: locations) else { return nil }
+
+        // Same geometry as the two-colour gradient: spans the whole canvas (y up).
+        let radians = angle * .pi / 180
+        let direction = CGPoint(x: sin(radians), y: cos(radians))
+        let half = (abs(direction.x) * size.width + abs(direction.y) * size.height) / 2
+        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+        context.drawLinearGradient(
+            gradient,
+            start: CGPoint(x: center.x - direction.x * half, y: center.y - direction.y * half),
+            end: CGPoint(x: center.x + direction.x * half, y: center.y + direction.y * half),
+            options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
+        guard let drawn = context.makeImage() else { return nil }
+        let image = CIImage(cgImage: drawn)
+        cache.setObject(image, forKey: key)
+        return image
+    }
+}

@@ -8,7 +8,10 @@ import SwiftUI
 ///   Text   – titles and notes (teal)
 ///
 /// Blocks: drag to move, drag an edge to resize, click to select, Delete to
-/// remove. Double-click empty zoom space to add a zoom.
+/// remove. Double-click empty zoom space to add a zoom. Drag the playhead's
+/// handle (or the strip above the rows) to scrub.
+///
+/// Keys (see EditorLayout): Space plays and pauses, I and O trim to the playhead.
 struct EditorTimeline: View {
     @Bindable var model: ProjectEditorModel
     @State private var moveOrigin: (id: UUID, start: Double, end: Double)?
@@ -16,31 +19,33 @@ struct EditorTimeline: View {
     private let rowHeight: CGFloat = 28
     private let rowSpacing: CGFloat = 6
     private let space = "timeline"
+    /// Room above the rows for the playhead's handle.
+    private let handleHeight: CGFloat = 16
     private var rowCount: CGFloat { model.hasCamera ? 5 : 4 }
-    private var totalHeight: CGFloat { rowHeight * rowCount + rowSpacing * (rowCount - 1) }
+    private var rowsHeight: CGFloat { rowHeight * rowCount + rowSpacing * (rowCount - 1) }
+    private var totalHeight: CGFloat { handleHeight + rowsHeight }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             header
             GeometryReader { geometry in
                 let width = geometry.size.width
-                VStack(spacing: rowSpacing) {
-                    clipRow(width: width)
-                    zoomRow(width: width)
-                    editsRow(width: width)
-                    if model.hasCamera { layoutRow(width: width) }
-                    textRow(width: width)
+                VStack(spacing: 0) {
+                    scrubStrip(width: width)
+                    VStack(spacing: rowSpacing) {
+                        clipRow(width: width)
+                        zoomRow(width: width)
+                        editsRow(width: width)
+                        if model.hasCamera { layoutRow(width: width) }
+                        textRow(width: width)
+                    }
                 }
-                .overlay(alignment: .topLeading) {
-                    Rectangle()
-                        .fill(.red)
-                        .frame(width: 2, height: totalHeight)
-                        .offset(x: x(model.currentTime, width) - 1)
-                        .allowsHitTesting(false)
-                }
+                .overlay(alignment: .topLeading) { trimmedAreas(width: width) }
+                .overlay(alignment: .topLeading) { playhead(width: width) }
                 .coordinateSpace(name: space)
             }
             .frame(height: totalHeight)
+            if let zoom = model.selectedZoom { zoomLevelBar(zoom) }
         }
         .focusable()
         .focusEffectDisabled()
@@ -74,6 +79,100 @@ struct EditorTimeline: View {
         }
     }
 
+    // MARK: Trimmed parts
+
+    /// What the trim cuts away, as striped blocks across every row, labelled
+    /// with how much is trimmed. Drag the yellow grips to change it.
+    private func trimmedAreas(width: CGFloat) -> some View {
+        let start = x(model.trimStart, width)
+        let end = x(model.trimEnd, width)
+        return ZStack(alignment: .topLeading) {
+            if model.trimStart > 0.05 {
+                trimmedBlock(seconds: model.trimStart, width: start).offset(x: 0, y: handleHeight)
+            }
+            if model.duration - model.trimEnd > 0.05 {
+                trimmedBlock(seconds: model.duration - model.trimEnd, width: width - end).offset(x: end, y: handleHeight)
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    /// A trimmed part: the rows dimmed, plus a yellow block on the Edits row
+    /// (next to the red cuts and orange speed-ups) saying how much is trimmed.
+    private func trimmedBlock(seconds: Double, width: CGFloat) -> some View {
+        let editsRowTop = rowHeight * 2 + rowSpacing * 2
+        return ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.black.opacity(0.3))
+                .frame(width: max(width, 0), height: rowsHeight)
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.yellow.opacity(0.8))
+                .overlay(alignment: .leading) {
+                    if width > 60 {
+                        Text("Trim \(seconds.formatted(.number.precision(.fractionLength(1)))) s")
+                            .font(.caption2.bold())
+                            .foregroundStyle(.black.opacity(0.75))
+                            .padding(.leading, 10)
+                    }
+                }
+                .frame(width: max(width, 0), height: rowHeight)
+                .offset(y: editsRowTop)
+        }
+    }
+
+    // MARK: Playhead
+
+    /// The strip above the rows: click or drag anywhere on it to scrub.
+    private func scrubStrip(width: CGFloat) -> some View {
+        Color.clear
+            .frame(height: handleHeight)
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named(space)).onChanged {
+                model.seek(to: time($0.location.x, width))
+            })
+            .onHover { $0 ? NSCursor.resizeLeftRight.push() : NSCursor.pop() }
+    }
+
+    /// The red line with a handle on top (an arrow pointing down) to grab.
+    private func playhead(width: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            PlayheadHandle()
+                .fill(.red)
+                .frame(width: 14, height: handleHeight)
+                .shadow(color: .black.opacity(0.3), radius: 1, y: 1)
+            Rectangle()
+                .fill(.red)
+                .frame(width: 2, height: rowsHeight)
+                .allowsHitTesting(false)
+        }
+        .offset(x: x(model.currentTime, width) - 7)
+        .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named(space)).onChanged {
+            model.seek(to: time($0.location.x, width))
+        })
+        .help("Drag to move through the video")
+    }
+
+    /// Under the rows while a zoom is selected: how close that zoom goes.
+    private func zoomLevelBar(_ zoom: ZoomSegment) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "plus.magnifyingglass").foregroundStyle(.secondary)
+            Text("Zoom level").foregroundStyle(.secondary)
+            Slider(value: Binding(
+                get: { zoom.scale },
+                set: { var changed = zoom; changed.scale = $0; model.updateZoom(changed) }
+            ), in: 1.25...5)
+            .frame(maxWidth: 260)
+            Text(zoom.scale.formatted(.number.precision(.fractionLength(1))) + "×")
+                .monospacedDigit()
+                .frame(width: 36, alignment: .leading)
+            Text("Drag the target in the panel on the right to choose where it zooms.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .font(.callout)
+    }
+
     // MARK: Rows
 
     private func clipRow(width: CGFloat) -> some View {
@@ -88,7 +187,7 @@ struct EditorTimeline: View {
                 .frame(width: max(end - start, 12))
                 .offset(x: start)
             trimHandle(at: start, width: width) { model.setTrimStart($0) }
-            trimHandle(at: end - 8, width: width) { model.setTrimEnd($0) }
+            trimHandle(at: end - 12, width: width) { model.setTrimEnd($0) }
         }
         .frame(height: rowHeight)
         .contentShape(Rectangle())
@@ -240,15 +339,24 @@ struct EditorTimeline: View {
             })
     }
 
+    /// A thick yellow grip at each end of the clip. Drag to trim; I and O
+    /// trim to the playhead.
     private func trimHandle(at position: CGFloat, width: CGFloat, onDrag: @escaping (Double) -> Void) -> some View {
-        RoundedRectangle(cornerRadius: 3)
+        RoundedRectangle(cornerRadius: 4)
             .fill(.yellow)
-            .frame(width: 8, height: rowHeight)
+            .overlay {
+                HStack(spacing: 2) {
+                    Capsule().fill(.black.opacity(0.45)).frame(width: 1.5, height: 12)
+                    Capsule().fill(.black.opacity(0.45)).frame(width: 1.5, height: 12)
+                }
+            }
+            .frame(width: 12, height: rowHeight)
             .offset(x: position)
             .onHover { $0 ? NSCursor.resizeLeftRight.push() : NSCursor.pop() }
             .highPriorityGesture(DragGesture(minimumDistance: 0, coordinateSpace: .named(space)).onChanged {
                 onDrag(time($0.location.x, width))
             })
+            .help("Drag to trim (or press I and O to trim to the playhead)")
     }
 
     // MARK: Helpers
@@ -265,5 +373,23 @@ struct EditorTimeline: View {
     private static func format(_ seconds: Double) -> String {
         let total = max(0, seconds)
         return String(format: "%d:%04.1f", Int(total) / 60, total.truncatingRemainder(dividingBy: 60))
+    }
+}
+
+/// A rounded tab with a point at the bottom, like a map pin.
+private struct PlayheadHandle: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let r: CGFloat = 3
+        path.move(to: CGPoint(x: rect.minX + r, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - r, y: rect.minY))
+        path.addQuadCurve(to: CGPoint(x: rect.maxX, y: rect.minY + r), control: CGPoint(x: rect.maxX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.height * 0.55))
+        path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.height * 0.55))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + r))
+        path.addQuadCurve(to: CGPoint(x: rect.minX + r, y: rect.minY), control: CGPoint(x: rect.minX, y: rect.minY))
+        path.closeSubpath()
+        return path
     }
 }

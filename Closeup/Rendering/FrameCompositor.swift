@@ -39,7 +39,7 @@ struct FrameCompositor: Sendable {
 
         // Where the screen and camera go, blending between layouts.
         let padded = bounds.insetBy(dx: padding, dy: padding)
-        var layout = LayoutGeometry.make(.bubble, bounds: bounds, padded: padded, style: style, unit: unit)
+        var layout = LayoutGeometry.make(style.baseLayout, bounds: bounds, padded: padded, style: style, unit: unit)
         if let (target, amount) = LayoutGeometry.active(in: style.cameraLayouts, at: time) {
             layout = layout.blended(
                 to: LayoutGeometry.make(target, bounds: bounds, padded: padded, style: style, unit: unit), amount)
@@ -54,6 +54,23 @@ struct FrameCompositor: Sendable {
             x: available.midX - contentSize.width / 2, y: available.midY - contentSize.height / 2,
             width: contentSize.width, height: contentSize.height)
         let radius = min(style.cornerRadius * unit, contentRect.width / 2, contentRect.height / 2)
+
+        // Side by side: the camera panel lines up with the screen, same height
+        // (or same width in tall videos), instead of running taller than it.
+        if layout.matchesScreen > 0 {
+            var matched = layout.cameraRect
+            if bounds.width >= bounds.height {
+                matched.origin.y = contentRect.minY
+                matched.size.height = contentRect.height
+            } else {
+                matched.origin.x = contentRect.minX
+                matched.size.width = contentRect.width
+            }
+            let a = layout.matchesScreen, r = layout.cameraRect
+            layout.cameraRect = CGRect(
+                x: r.minX + (matched.minX - r.minX) * a, y: r.minY + (matched.minY - r.minY) * a,
+                width: r.width + (matched.width - r.width) * a, height: r.height + (matched.height - r.height) * a)
+        }
 
         // The camera picks which part of the screen fills the frame.
         let view = visibleRect(at: time, sourceSize: sourceSize)
@@ -305,6 +322,10 @@ struct FrameCompositor: Sendable {
         case .solid:
             return CIImage(color: style.solidColor.ciColor).cropped(to: bounds)
         case .gradient:
+            if let stops = style.gradientStops, stops.count > 2,
+               let image = GradientImage.image(stops: stops, angle: style.gradientAngle, size: bounds.size) {
+                return image
+            }
             // CSS-style angle → a direction vector (y up), spanning the whole canvas.
             let angle = style.gradientAngle * .pi / 180
             let direction = CGPoint(x: sin(angle), y: cos(angle))

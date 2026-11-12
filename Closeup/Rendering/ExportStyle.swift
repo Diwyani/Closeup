@@ -17,6 +17,9 @@ struct ExportStyle: Codable, Equatable, Sendable {
     var gradientEnd = GradientPreset.all[0].end
     /// Like CSS: 0° goes up, 90° goes right, 135° goes to the bottom-right.
     var gradientAngle = 135.0
+    /// For gradients with more than two colours (from a preset). nil = just
+    /// the start and end colours.
+    var gradientStops: [RGBAColor]?
     /// The picture's file name inside the recording's folder.
     var backgroundImage: String?
     /// 0 = sharp, 1 = very soft.
@@ -121,6 +124,17 @@ struct ExportStyle: Codable, Equatable, Sendable {
 
     /// Full-screen camera, side by side, etc. for parts of the video.
     var cameraLayouts: [LayoutSegment] = []
+    /// The layout for the whole video, outside any layout blocks.
+    var baseLayout = CameraLayout.bubble
+
+    enum Side: String, Codable, CaseIterable, Sendable { case left, right }
+
+    /// Side by side: where the camera goes (left/right; top/bottom in tall videos).
+    var cameraSide = Side.left
+    /// Side by side: the camera's share of the width (or height in tall videos).
+    var cameraPanelShare = 0.4
+    /// Side by side and Camera only: corner rounding of the camera panel, in px at 1080p.
+    var cameraPanelRadius = 20.0
 
     /// Titles and notes on top of the video.
     var textOverlays: [TextOverlay] = []
@@ -153,6 +167,7 @@ struct ExportStyle: Codable, Equatable, Sendable {
         gradientStart = try c.decodeIfPresent(RGBAColor.self, forKey: .gradientStart) ?? d.gradientStart
         gradientEnd = try c.decodeIfPresent(RGBAColor.self, forKey: .gradientEnd) ?? d.gradientEnd
         gradientAngle = try c.decodeIfPresent(Double.self, forKey: .gradientAngle) ?? d.gradientAngle
+        gradientStops = try c.decodeIfPresent([RGBAColor].self, forKey: .gradientStops)
         backgroundImage = try c.decodeIfPresent(String.self, forKey: .backgroundImage)
         backgroundBlur = try c.decodeIfPresent(Double.self, forKey: .backgroundBlur) ?? d.backgroundBlur
         backgroundDim = try c.decodeIfPresent(Double.self, forKey: .backgroundDim) ?? d.backgroundDim
@@ -190,6 +205,10 @@ struct ExportStyle: Codable, Equatable, Sendable {
         cameraCorner = try c.decodeIfPresent(Corner.self, forKey: .cameraCorner) ?? d.cameraCorner
         cameraMirrored = try c.decodeIfPresent(Bool.self, forKey: .cameraMirrored) ?? d.cameraMirrored
         cameraLayouts = try c.decodeIfPresent([LayoutSegment].self, forKey: .cameraLayouts) ?? d.cameraLayouts
+        baseLayout = try c.decodeIfPresent(CameraLayout.self, forKey: .baseLayout) ?? d.baseLayout
+        cameraSide = try c.decodeIfPresent(Side.self, forKey: .cameraSide) ?? d.cameraSide
+        cameraPanelShare = try c.decodeIfPresent(Double.self, forKey: .cameraPanelShare) ?? d.cameraPanelShare
+        cameraPanelRadius = try c.decodeIfPresent(Double.self, forKey: .cameraPanelRadius) ?? d.cameraPanelRadius
         captions = try c.decodeIfPresent([Caption].self, forKey: .captions)
         showsCaptions = try c.decodeIfPresent(Bool.self, forKey: .showsCaptions) ?? d.showsCaptions
         captionSize = try c.decodeIfPresent(Double.self, forKey: .captionSize) ?? d.captionSize
@@ -238,9 +257,23 @@ struct RGBAColor: Codable, Equatable, Sendable {
 
 struct GradientPreset: Identifiable, Sendable {
     let name: String
-    let start: RGBAColor
-    let end: RGBAColor
+    /// Two or more colours, first to last.
+    let stops: [RGBAColor]
+    /// Picking a preset sets this angle: diagonal, top-left to bottom-right.
+    var angle = 135.0
     var id: String { name }
+    var start: RGBAColor { stops[0] }
+    var end: RGBAColor { stops[stops.count - 1] }
+
+    init(name: String, start: RGBAColor, end: RGBAColor) {
+        self.name = name
+        stops = [start, end]
+    }
+
+    init(name: String, top stops: [UInt32]) {
+        self.name = name
+        self.stops = stops.map(RGBAColor.init(hex:))
+    }
 
     static let all = [
         GradientPreset(name: "Dusk", start: RGBAColor(hex: 0x6E8BFF), end: RGBAColor(hex: 0xC86DD7)),
@@ -249,5 +282,12 @@ struct GradientPreset: Identifiable, Sendable {
         GradientPreset(name: "Mint", start: RGBAColor(hex: 0x43E97B), end: RGBAColor(hex: 0x38F9D7)),
         GradientPreset(name: "Ocean", start: RGBAColor(hex: 0x2E3192), end: RGBAColor(hex: 0x1BFFFF)),
         GradientPreset(name: "Graphite", start: RGBAColor(hex: 0x434343), end: RGBAColor(hex: 0x0F0F0F)),
+        GradientPreset(name: "Sunset", top: [0xFDA046, 0xF57C73, 0xB07985, 0x5F71AB, 0x321805]),
+        GradientPreset(name: "Dusk peach", top: [0x2B313D, 0x7D8BA7, 0xB2BFD2, 0xFFAF77, 0xFFE4B9]),
+        GradientPreset(name: "Night lilac", top: [0x020201, 0x7588AF, 0xB498A7]),
+        GradientPreset(name: "Golden hour", top: [0x484843, 0x5E78A4, 0xB5A38F, 0xFAC983, 0xFEEC76]),
+        GradientPreset(name: "Blue hour", top: [0x14202C, 0x2B3422, 0x515D6D, 0x768EBF, 0xC8D7F1]),
+        GradientPreset(name: "Olive", top: [0x1D1F1B, 0x4A4832, 0x74745D, 0xA7AB57, 0xE8ECF4]),
+        GradientPreset(name: "Meadow", top: [0x3F4E36, 0x617F3D, 0xD19B4A, 0xCEDBBC, 0xEDDC23]),
     ]
 }

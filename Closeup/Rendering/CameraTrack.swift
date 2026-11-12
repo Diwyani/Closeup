@@ -9,6 +9,11 @@ struct ZoomSegment: Codable, Equatable, Sendable, Identifiable {
     var end: Double
     /// 2 = twice as close.
     var scale: Double
+    /// Where to zoom, chosen by you: 0…1 across and down the screen.
+    /// nil = automatic.
+    var focus: CGPoint?
+    /// Follow the cursor around instead of holding still.
+    var followsCursor: Bool?
 }
 
 /// Something worth zooming in on: a click, or typing.
@@ -46,6 +51,27 @@ enum ZoomPlanner {
         return activities
     }
 
+    /// Where a steady zoom looks, in screen points: the middle of everything
+    /// you clicked or typed during it, if it all fits in view (with room to
+    /// spare). nil = it doesn't fit, so the zoom follows the cursor instead.
+    static func steadyCenter(for segment: ZoomSegment, activities: [ZoomActivity], screenSize: CGSize) -> CGPoint? {
+        let points = activities.filter { $0.time >= segment.start && $0.time <= segment.end }.map(\.focus)
+        guard let first = points.first else { return nil }
+        let box = points.reduce(CGRect(origin: first, size: .zero)) { $0.union(CGRect(origin: $1, size: .zero)) }
+        let fitsWidth = box.width <= screenSize.width / segment.scale * 0.8
+        let fitsHeight = box.height <= screenSize.height / segment.scale * 0.8
+        return fitsWidth && fitsHeight ? CGPoint(x: box.midX, y: box.midY) : nil
+    }
+
+    /// The point a zoom holds still on, in screen points; nil if it follows the cursor.
+    static func anchor(for segment: ZoomSegment, activities: [ZoomActivity], screenSize: CGSize) -> CGPoint? {
+        if segment.followsCursor == true { return nil }
+        if let focus = segment.focus {
+            return CGPoint(x: focus.x * screenSize.width, y: focus.y * screenSize.height)
+        }
+        return steadyCenter(for: segment, activities: activities, screenSize: screenSize)
+    }
+
     /// One zoom per burst of activity: it begins just before the first
     /// action and ends a moment after the last.
     /// `scale` is for clicks, `typingScale` for typing (closer, so text is
@@ -76,6 +102,8 @@ enum ZoomPlanner {
 /// which point it's centred on.
 ///
 /// - Zoom eases in and out with a critically damped spring (smooth, no wobble).
+/// - Each zoom holds still on one spot (yours, or the middle of what you did
+///   in it), unless it's set to follow the cursor or your actions don't fit.
 /// - While zoomed, the camera only pans when what you're doing gets near the
 ///   edge of the view (a "dead zone"), instead of chasing every mouse wiggle.
 /// - While typing, it looks at where you're typing, not where the mouse is.
@@ -101,6 +129,7 @@ struct CameraTrack: Sendable {
         let zoomStiffness = 2 * Double.pi * 0.9 * speed
         let panStiffness = 2 * Double.pi * 0.8 * speed
         let typing = activities.filter(\.isTyping).sorted { $0.time < $1.time }
+        let anchors = segments.map { ZoomPlanner.anchor(for: $0, activities: activities, screenSize: screenSize) }
 
         var zoom = 1.0
         var zoomVelocity = 0.0
@@ -133,7 +162,15 @@ struct CameraTrack: Sendable {
             // and it means a zoom starts right where you are). Zoomed in: only
             // move when the focus leaves the calm middle of the view.
             var target = focus
-            if targetZoom > 1, zoom > 1.05 {
+            let active = segmentIndex < segments.count && segments[segmentIndex].start <= t ? segmentIndex : nil
+            if let active, let anchor = anchors[active] {
+                // A steady zoom: hold on its spot, kept inside the screen.
+                let halfWidth = screenSize.width / targetZoom / 2
+                let halfHeight = screenSize.height / targetZoom / 2
+                target = CGPoint(
+                    x: min(max(anchor.x, halfWidth), screenSize.width - halfWidth),
+                    y: min(max(anchor.y, halfHeight), screenSize.height - halfHeight))
+            } else if targetZoom > 1, zoom > 1.05 {
                 let halfWidth = screenSize.width / zoom / 2
                 let halfHeight = screenSize.height / zoom / 2
                 target = CGPoint(

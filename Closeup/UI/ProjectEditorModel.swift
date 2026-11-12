@@ -66,6 +66,7 @@ final class ProjectEditorModel {
     @ObservationIgnored private let sprites: CursorSprites
     @ObservationIgnored private var cursorTrack: CursorTrack
     @ObservationIgnored private var cameraTrack: CameraTrack?
+    @ObservationIgnored private var zoomActivities: [ZoomActivity] = []
     @ObservationIgnored private let liveCompositor: LiveCompositor
     @ObservationIgnored private var sources: ProjectSources
     @ObservationIgnored private var composition: ProjectComposition
@@ -165,6 +166,7 @@ final class ProjectEditorModel {
         cursorTrack = CursorTrack(log: cursorLog, duration: duration, smoothing: style.cursorSmoothing)
         if style.autoZoom {
             let activities = ZoomPlanner.activities(from: cursorLog, duration: duration, includeTyping: style.zoomOnTyping)
+            zoomActivities = activities
             zoomSegments = style.zoomSegments
                 ?? ZoomPlanner.segments(
                     for: activities, duration: duration, scale: style.zoomLevel, typingScale: style.typingZoomLevel)
@@ -351,6 +353,11 @@ final class ProjectEditorModel {
         style = changed
     }
 
+    /// How many automatic edits of a kind are on the timeline now.
+    func automaticEditCount(_ kind: TimeEdit.Kind) -> Int {
+        timeEdits.filter { $0.kind == kind && automaticEditIDs.contains($0.id) }.count
+    }
+
     /// You've added, changed or removed cuts or speed-ups yourself.
     var editsAreCustom: Bool { !(style.timeEdits ?? []).isEmpty || !style.dismissedEdits.isEmpty }
     var selectedEdit: TimeEdit? { timeEdits.first { $0.id == selectedID } }
@@ -406,6 +413,23 @@ final class ProjectEditorModel {
         selectedID = segment.id
     }
 
+    /// Where a zoom looks, 0…1 across and down the screen (yours or automatic);
+    /// nil while it follows the cursor.
+    func zoomTarget(_ zoom: ZoomSegment) -> CGPoint? {
+        let size = CGSize(width: cursorLog.width, height: cursorLog.height)
+        return ZoomPlanner.anchor(for: zoom, activities: zoomActivities, screenSize: size)
+            .map { CGPoint(x: $0.x / size.width, y: $0.y / size.height) }
+    }
+
+    @ObservationIgnored private var screenMapCache: CGImage?
+
+    /// A small picture of the whole screen (no zoom), for choosing a zoom's target.
+    var screenMap: CGImage? {
+        if let screenMapCache { return screenMapCache }
+        screenMapCache = liveCompositor.screenThumbnail(width: 520)
+        return screenMapCache
+    }
+
     /// Back to the automatic zooms.
     func resetZooms() {
         style.zoomSegments = nil
@@ -415,6 +439,11 @@ final class ProjectEditorModel {
     // MARK: Timeline: camera layouts
 
     var layoutSegments: [LayoutSegment] { style.cameraLayouts }
+
+    /// Whether this layout appears anywhere in the video (whole-video or a block).
+    func usesLayout(_ layout: CameraLayout) -> Bool {
+        style.baseLayout == layout || layoutSegments.contains { $0.layout == layout }
+    }
     var selectedLayout: LayoutSegment? { layoutSegments.first { $0.id == selectedID } }
 
     func addLayout(at time: Double) {
@@ -611,6 +640,17 @@ final class ProjectEditorModel {
                 if self.player.rate > 0, self.currentTime < self.trimStart - 0.05 { self.seek(to: self.trimStart) }
             }
         }
+    }
+
+    /// Space bar: play, or pause. Playing from the end starts again at the trim start.
+    func togglePlay() {
+        if player.rate > 0 {
+            player.pause()
+            return
+        }
+        if currentTime >= trimEnd - 0.05 || currentTime < trimStart { seek(to: trimStart) }
+        stillFrame = nil
+        player.play()
     }
 
     /// Jumps to a moment in recording time.
