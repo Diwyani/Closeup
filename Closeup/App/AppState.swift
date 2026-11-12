@@ -73,8 +73,11 @@ final class AppState {
     @ObservationIgnored private var hotKey: GlobalHotKey?
     @ObservationIgnored private var hiddenWindows: [NSWindow] = []
 
+    let updates = UpdateChecker()
+
     init() {
         RecordingProject.moveOldLibrary()
+        updates.checkIfDue()
         hotKey = GlobalHotKey { [weak self] in self?.toggleRecording() }
 
         // Re-check permission whenever the user comes back from System Settings.

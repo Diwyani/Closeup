@@ -13,6 +13,10 @@ struct MenuBarMenu: View {
 
         Button("Open Closeup") { appState.showMainWindow() }
         Button("Show Recordings in Finder") { appState.revealLibrary() }
+        Button("Check for Updates") {
+            appState.showMainWindow()
+            Task { await appState.updates.check(manually: true) }
+        }
 
         Divider()
 

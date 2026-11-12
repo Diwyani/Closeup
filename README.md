@@ -46,6 +46,8 @@ Smooth auto zoom, a tidy cursor, your face, captions. No editing skills needed.<
 
 Everything runs on your Mac. No account, no uploads, no third-party code: it's built only on Apple's frameworks.
 
+**Updates:** Closeup checks GitHub once a day for the date of the latest change (that's the only thing it sends or receives) and shows a banner when there's a new version. Click **Update**, or double-click **Update Closeup** in the folder, and it rebuilds and reinstalls itself with your Apple ID. No Xcode window needed.
+
 ## Requirements
 
 - macOS 14 or later (captions work best on macOS 26)

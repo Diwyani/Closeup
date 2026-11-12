@@ -51,6 +51,7 @@ struct MainWindowView: View {
                 RecorderView()
             }
         }
+        .safeAreaInset(edge: .top, spacing: 0) { UpdateBanner(checker: appState.updates) }
         .frame(minWidth: 960, minHeight: 620)
     }
 }

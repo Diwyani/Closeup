@@ -87,7 +87,14 @@ You only need Xcode again to get a newer version (see below).
 
 ## Getting updates
 
-Download the ZIP again (step 2), replace the old folder, press **⌘R** in Xcode, then put the new Closeup in Applications again (replace the old one). Your recordings stay safe in `~/Movies/Closeup`.
+No more Xcode for updates. Either way takes a minute or two:
+
+- **From the app:** when there's a new version, a banner at the top of Closeup says so. Click **Update**. A Terminal window opens, downloads and builds the new version with your Apple ID, puts it in Applications, and reopens Closeup. You can also choose **Check for Updates** from the menu bar icon.
+- **By hand:** double-click **Update Closeup** in the Closeup folder. It does the same thing. The first time, macOS may say it's from the internet: right-click it, choose **Open**, then **Open** again.
+
+Xcode needs to stay installed (the updater uses it out of sight), and you need to be signed in under Xcode → Settings → Accounts. Your recordings stay safe in `~/Movies/Closeup`.
+
+**Shortcut for a first install:** once Xcode is installed and you've signed in (steps 1 and 4), you can skip steps 3, 5 and 6 entirely: just double-click **Update Closeup**. It finds your Apple ID by itself.
 
 ## If something goes wrong
 
@@ -99,4 +106,6 @@ Download the ZIP again (step 2), replace the old folder, press **⌘R** in Xcode
 | The recording is black | Screen Recording isn't on yet, or Closeup wasn't relaunched after turning it on (step 7). |
 | Closeup won't open after a long time | The signing from a free Apple ID lasts about a year. Open the project, press **⌘R**, and put the new copy in Applications. |
 | Can't find "Show in Finder" | Closeup has to be open. Press **⌘R** in Xcode first, then right-click its icon in the Dock. |
+| The updater says it can't find your Apple ID | Open Xcode → Settings → Accounts and sign in, then run it again. |
+| "Update Closeup" won't open | Right-click it → **Open** → **Open**. macOS asks once for files downloaded from the internet. |
 | Something else | [Open an issue](https://github.com/Diwyani/Closeup/issues/new/choose) with a screenshot. |
