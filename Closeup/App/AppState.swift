@@ -89,6 +89,7 @@ final class AppState {
     let updates = UpdateChecker()
 
     init() {
+        AppDelegate.appState = self
         RecordingProject.moveOldLibrary()
         updates.checkIfDue()
         hotKey = GlobalHotKey { [weak self] in self?.toggleRecording() }
@@ -297,8 +298,25 @@ final class AppState {
         countdownTask = nil
         countdown.hide()
         phase = .idle
-        Task { await discardSession() }
+        discardTask = Task { await discardSession() }
         showMainWindow()
+    }
+
+    @ObservationIgnored private var discardTask: Task<Void, Never>?
+
+    /// Called when the app is asked to quit: finish and save a recording in
+    /// progress, or cancel a countdown, and return once nothing is running.
+    func finishBeforeQuitting() async {
+        // At most a minute; saving normally takes a second or two.
+        for _ in 0..<600 where phase != .idle {
+            switch phase {
+            case .recording: await stopRecording()
+            case .countdown: cancelCountdown()  // ignored in the instant capture starts; then it's .recording
+            case .saving, .idle: break
+            }
+            if phase != .idle { try? await Task.sleep(for: .milliseconds(100)) }
+        }
+        await discardTask?.value
     }
 
     private func discardSession() async {
