@@ -71,6 +71,8 @@ final class EditorExportTests: XCTestCase {
         changed.silenceLength = 0.5  // the sample's quiet second half is now a cut
         model.style = changed
         XCTAssertEqual(model.automaticEditCount(.cut), 1)
+        // Let the timeline settle first, as it has by the time anyone clicks Export.
+        try await Task.sleep(for: .milliseconds(600))
 
         _ = try await FixtureProject.export(model)
         XCTAssertEqual(model.automaticEditCount(.cut), 1)
