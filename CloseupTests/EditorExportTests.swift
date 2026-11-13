@@ -149,4 +149,21 @@ final class EditorExportTests: XCTestCase {
         done.wait()
         guard writer.status == .completed else { throw writer.error! }
     }
+
+    /// Replacing the background picture used to delete the old one, so Undo
+    /// brought back a plain colour instead of the picture.
+    func testUndoBringsBackThePreviousBackgroundPicture() async throws {
+        let model = try await ProjectEditorModel.load(project)
+        let picture = FixtureProject.folder.appending(path: "golden-0.30.png")
+        model.useBackgroundImage(picture)
+        let first = try XCTUnwrap(model.style.backgroundImage)
+        XCTAssertEqual(model.style.backgroundKind, .image)
+        try await Task.sleep(for: .milliseconds(700))  // so the next change is its own undo step
+        model.useBackgroundImage(picture)
+        XCTAssertNotEqual(model.style.backgroundImage, first)
+
+        model.undo()
+        XCTAssertEqual(model.style.backgroundImage, first)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: project.folder.appending(path: first).path))
+    }
 }

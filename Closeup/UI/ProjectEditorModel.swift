@@ -533,7 +533,7 @@ final class ProjectEditorModel {
         backgroundError = nil
         do {
             let name = try BackgroundImage.importImage(from: url, into: project.folder)
-            if let old = style.backgroundImage { try? FileManager.default.removeItem(at: project.folder.appending(path: old)) }
+            // The previous picture's file stays in the folder, so Undo can bring it back.
             var changed = style
             changed.backgroundImage = name
             changed.backgroundKind = .image
