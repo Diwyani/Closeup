@@ -108,6 +108,8 @@ struct ProjectSources {
     let screen: AVAssetTrack
     /// The part of screen.mov that actually has frames (may start a little after 0).
     let screenRange: CMTimeRange
+    /// The screen video's size in pixels.
+    let screenSize: CGSize
     let duration: CMTime
     let camera: Placed?
     let microphone: Placed?
@@ -124,6 +126,7 @@ enum CompositionBuilder {
         guard let screen = try await screenAsset.loadTracks(withMediaType: .video).first else { throw ExportError.noVideoTrack }
         let duration = try await screenAsset.load(.duration)
         let screenRange = try await screen.load(.timeRange)
+        let screenSize = try await screen.load(.naturalSize)
         let camera = try await place(metadata.camera, .video, of: project, duration: duration)
         var microphoneInfo = metadata.microphone
         if cleanMicrophone, FileManager.default.fileExists(atPath: project.cleanMicrophoneURL.path) {
@@ -135,6 +138,7 @@ enum CompositionBuilder {
             assets: [screenAsset] + [camera, microphone, systemAudio].compactMap { $0?.asset },
             screen: screen,
             screenRange: screenRange,
+            screenSize: screenSize,
             duration: duration,
             camera: camera?.placed,
             microphone: microphone?.placed,
@@ -181,6 +185,7 @@ enum CompositionBuilder {
             timeRange: CMTimeRange(start: .zero, duration: duration),
             screenTrackID: screenTrack.trackID,
             cameraTrackID: cameraTrack?.trackID,
+            screenSize: sources.screenSize,
             compositor: compositor)]
         videoComposition.renderSize = canvas
         // A steady frame rate, even where the raw recording has gaps (a still
@@ -242,12 +247,18 @@ final class StudioInstruction: NSObject, AVVideoCompositionInstructionProtocol, 
 
     let screenTrackID: CMPersistentTrackID
     let cameraTrackID: CMPersistentTrackID?
+    /// The screen video's size, for moments where it has no frame.
+    let screenSize: CGSize
     let compositor: LiveCompositor
 
-    init(timeRange: CMTimeRange, screenTrackID: CMPersistentTrackID, cameraTrackID: CMPersistentTrackID?, compositor: LiveCompositor) {
+    init(
+        timeRange: CMTimeRange, screenTrackID: CMPersistentTrackID, cameraTrackID: CMPersistentTrackID?,
+        screenSize: CGSize, compositor: LiveCompositor
+    ) {
         self.timeRange = timeRange
         self.screenTrackID = screenTrackID
         self.cameraTrackID = cameraTrackID
+        self.screenSize = screenSize
         self.compositor = compositor
         requiredSourceTrackIDs = [screenTrackID, cameraTrackID].compactMap { $0 }.map { NSNumber(value: $0) }
         super.init()
@@ -273,7 +284,6 @@ final class StudioVideoCompositor: NSObject, AVVideoCompositing {
     func startRequest(_ request: AVAsynchronousVideoCompositionRequest) {
         guard
             let instruction = request.videoCompositionInstruction as? StudioInstruction,
-            let screenBuffer = request.sourceFrame(byTrackID: instruction.screenTrackID),
             let output = request.renderContext.newPixelBuffer()
         else {
             request.finish(with: NSError(domain: "Closeup", code: 1, userInfo: [
@@ -281,6 +291,11 @@ final class StudioVideoCompositor: NSObject, AVVideoCompositing {
             ]))
             return
         }
+        // The screen video can have a gap with no picture (the encoder dropped
+        // the first frame, say). Show a black screen there instead of failing
+        // the whole preview or export.
+        let screen = request.sourceFrame(byTrackID: instruction.screenTrackID).map { CIImage(cvPixelBuffer: $0) }
+            ?? CIImage(color: .black).cropped(to: CGRect(origin: .zero, size: instruction.screenSize))
 
         // The camera may not cover every moment (it can start a bit late).
         let camera = instruction.cameraTrackID
@@ -288,7 +303,6 @@ final class StudioVideoCompositor: NSObject, AVVideoCompositing {
             .map { CIImage(cvPixelBuffer: $0) }
 
         let size = request.renderContext.size
-        let screen = CIImage(cvPixelBuffer: screenBuffer)
         instruction.compositor.lastFrame = .init(screen: screen, camera: camera, time: request.compositionTime.seconds)
         let frame = instruction.compositor.current.render(
             source: screen,

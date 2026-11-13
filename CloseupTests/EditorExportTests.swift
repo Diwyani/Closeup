@@ -112,4 +112,41 @@ final class EditorExportTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(900))  // saved shortly after the last change
         XCTAssertEqual(try ExportStyle.load(from: project.styleURL).padding, 33)
     }
+
+    /// If the encoder dropped the very first frame while recording, the video
+    /// starts with a short gap. Such recordings used to fail to export with
+    /// "Missing frame for compositing".
+    func testARecordingWhoseVideoStartsLateStillExports() async throws {
+        try FileManager.default.removeItem(at: project.videoURL)
+        try Self.writeVideo(to: project.videoURL, firstFrameAt: 0.5, seconds: 2)
+        let model = try await ProjectEditorModel.load(project)
+        let url = try await FixtureProject.export(model)
+        let seconds = try await length(of: url)
+        XCTAssertEqual(seconds, 2, accuracy: 0.1)
+    }
+
+    /// A plain grey 640×400 video with nothing before `firstFrameAt`.
+    static func writeVideo(to url: URL, firstFrameAt start: Double, seconds: Double) throws {
+        let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
+        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
+            AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: 640, AVVideoHeightKey: 400,
+        ])
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: nil)
+        writer.add(input)
+        guard writer.startWriting() else { throw writer.error! }
+        writer.startSession(atSourceTime: .zero)
+        var frame = Int(start * 30)
+        while Double(frame) / 30 < seconds {
+            while !input.isReadyForMoreMediaData { usleep(2000) }
+            let sample = VideoWriterTests.frame(at: 0, width: 640, height: 400)
+            adaptor.append(sample.imageBuffer!, withPresentationTime: CMTime(value: CMTimeValue(frame), timescale: 30))
+            frame += 1
+        }
+        input.markAsFinished()
+        writer.endSession(atSourceTime: CMTime(seconds: seconds, preferredTimescale: 600))
+        let done = DispatchSemaphore(value: 0)
+        writer.finishWriting { done.signal() }
+        done.wait()
+        guard writer.status == .completed else { throw writer.error! }
+    }
 }
