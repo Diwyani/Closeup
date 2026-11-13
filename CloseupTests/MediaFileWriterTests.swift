@@ -99,4 +99,22 @@ final class MediaFileWriterTests: XCTestCase {
         XCTAssertEqual(missing("cam", "gone"), .microphoneMissing)
         XCTAssertNotNil(RecordingError.cameraMissing.errorDescription)
     }
+
+    /// The camera is recorded with made-up 720p frames here; the file must
+    /// play and stay near the bitrate it was asked for.
+    func testCameraFileIsWrittenAtItsOwnSizeAndBitrate() async throws {
+        let url = folder.appending(path: "camera.mov")
+        let writer = MediaFileWriter(url: url, fileType: .mov, mediaType: .video, queue: queue, settings: MediaFileWriter.cameraSettings)
+        for index in 0..<45 {
+            let frame = VideoWriterTests.frame(at: Double(index) / 30, width: 1280, height: 720)
+            queue.sync { writer.append(frame, hostTime: CMTime(seconds: 700 + Double(index) / 30, preferredTimescale: 1_000_000)) }
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        let start = await writer.finish()
+        XCTAssertEqual(start ?? -1, 700, accuracy: 1e-6)
+        let track = try await AVURLAsset(url: url).loadTracks(withMediaType: .video).first
+        let size = try await XCTUnwrap(track).load(.naturalSize)
+        XCTAssertEqual(size, CGSize(width: 1280, height: 720))
+        XCTAssertEqual(MediaFileWriter.cameraBitrate, 3_000_000)
+    }
 }

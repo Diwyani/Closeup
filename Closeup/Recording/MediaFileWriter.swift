@@ -95,6 +95,11 @@ final class MediaFileWriter: @unchecked Sendable {
 
     // MARK: Settings
 
+    /// What the camera file spends per second. A 720p face in a bubble
+    /// doesn't need more; at twice this the camera file was often bigger
+    /// than the screen recording next to it.
+    static let cameraBitrate = 3_000_000
+
     /// H.264 at the camera's own size.
     static func cameraSettings(_ format: CMFormatDescription) -> [String: Any] {
         let size = CMVideoFormatDescriptionGetDimensions(format)
@@ -102,7 +107,7 @@ final class MediaFileWriter: @unchecked Sendable {
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: size.width,
             AVVideoHeightKey: size.height,
-            AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: 6_000_000],
+            AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: cameraBitrate],
         ]
     }
 
