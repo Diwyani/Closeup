@@ -63,6 +63,24 @@ final class EditorExportTests: XCTestCase {
         XCTAssertTrue(model.canRedo)
     }
 
+    /// After an export, automatic cuts used to become impossible to delete.
+    func testAutomaticCutsCanStillBeDeletedAfterExporting() async throws {
+        let model = try await ProjectEditorModel.load(project)
+        var changed = model.style
+        changed.cutsSilence = true
+        changed.silenceLength = 0.5  // the sample's quiet second half is now a cut
+        model.style = changed
+        XCTAssertEqual(model.automaticEditCount(.cut), 1)
+
+        _ = try await FixtureProject.export(model)
+        XCTAssertEqual(model.automaticEditCount(.cut), 1)
+
+        model.selectedID = try XCTUnwrap(model.timeEdits.first).id
+        model.deleteSelected()
+        XCTAssertTrue(model.timeEdits.isEmpty)
+        XCTAssertEqual(model.style.dismissedEdits.count, 1, "remembered, so it doesn't come back")
+    }
+
     func testAutomaticCutShortensTheExport() async throws {
         let model = try await ProjectEditorModel.load(project)
         var changed = model.style

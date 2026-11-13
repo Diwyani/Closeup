@@ -713,7 +713,10 @@ final class ProjectEditorModel {
         // copy isn't refreshed by trim or volume changes, so on its own it
         // could be one change behind.)
         compositor.style = style
-        compositor.timeMap = TimeMap(edits: currentTimeEdits(), duration: duration)
+        // `timeEdits` is always current. (Working the automatic edits out again
+        // here would give them new identities, and the ones on the timeline
+        // could then no longer be deleted.)
+        compositor.timeMap = TimeMap(edits: timeEdits, duration: duration)
         let resolution = resolution
         exportTask = Task {
             do {
