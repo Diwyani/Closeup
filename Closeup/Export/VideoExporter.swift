@@ -48,13 +48,14 @@ enum ExportResolution: String, CaseIterable, Identifiable, Sendable {
         return aspect.ratio >= 1 ? CGSize(width: long, height: shortSide) : CGSize(width: shortSide, height: long)
     }
 
-    /// Bits per second at 60 fps. Generous, because screen text shows
-    /// compression artefacts quickly.
+    /// Bits per second at 60 fps: the most the encoder may average. It uses
+    /// less when little moves. Enough to keep screen text clean, without the
+    /// file being far larger than it needs to be (these used to be double).
     var bitrate: Int {
         switch self {
-        case .hd720: 10_000_000
-        case .hd1080: 20_000_000
-        case .uhd4K: 60_000_000
+        case .hd720: 5_000_000
+        case .hd1080: 10_000_000
+        case .uhd4K: 30_000_000
         }
     }
 }

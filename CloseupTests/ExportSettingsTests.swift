@@ -27,6 +27,14 @@ final class ExportSettingsTests: XCTestCase {
         XCTAssertLessThan(ExportResolution.hd1080.bitrate, ExportResolution.uhd4K.bitrate)
     }
 
+    /// These decide how big every export is. They were halved once, after
+    /// measuring that the picture didn't visibly change; think before raising them.
+    func testExportBitrates() {
+        XCTAssertEqual(ExportResolution.hd720.bitrate, 5_000_000)
+        XCTAssertEqual(ExportResolution.hd1080.bitrate, 10_000_000)
+        XCTAssertEqual(ExportResolution.uhd4K.bitrate, 30_000_000)
+    }
+
     func testPresets() {
         XCTAssertEqual(ExportPreset.youtube.aspect, .wide)
         XCTAssertEqual(ExportPreset.youtube.resolution, .uhd4K)
