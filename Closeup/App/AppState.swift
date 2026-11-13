@@ -62,6 +62,16 @@ final class AppState {
             systemAudio: recordsSystemAudio)
     }
 
+    /// The camera or microphone you chose, if it has been unplugged since.
+    /// Recording without it would quietly give a video with no face or no voice.
+    static func missingDevice(
+        cameraID: String?, microphoneID: String?, cameraIDs: [String], microphoneIDs: [String]
+    ) -> RecordingError? {
+        if let cameraID, !cameraIDs.contains(cameraID) { return .cameraMissing }
+        if let microphoneID, !microphoneIDs.contains(microphoneID) { return .microphoneMissing }
+        return nil
+    }
+
     /// Set by the menu bar label, which is always alive, so we can reopen the
     /// main window even after the user closed it.
     @ObservationIgnored var openMainWindow: (() -> Void)?
@@ -224,6 +234,11 @@ final class AppState {
                 await refreshSources()
                 try Task.checkCancellation()
                 guard let target = makeTarget() else { throw RecordingError.noSourceSelected }
+                if let missing = Self.missingDevice(
+                    cameraID: selectedCameraID, microphoneID: selectedMicrophoneID,
+                    cameraIDs: cameras.map(\.uniqueID), microphoneIDs: microphones.map(\.uniqueID)) {
+                    throw missing
+                }
                 let session = try RecordingSession(target: target, options: recordingOptions)
                 started = session
                 self.session = session

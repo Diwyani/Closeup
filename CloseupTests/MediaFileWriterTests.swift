@@ -87,4 +87,16 @@ final class MediaFileWriterTests: XCTestCase {
         XCTAssertNil(start)
         XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
     }
+
+    @MainActor
+    func testAnUnpluggedCameraOrMicrophoneIsNoticedBeforeRecording() {
+        func missing(_ camera: String?, _ microphone: String?) -> RecordingError? {
+            AppState.missingDevice(cameraID: camera, microphoneID: microphone, cameraIDs: ["cam"], microphoneIDs: ["mic"])
+        }
+        XCTAssertNil(missing(nil, nil), "“No camera” and “No microphone” are always fine")
+        XCTAssertNil(missing("cam", "mic"))
+        XCTAssertEqual(missing("gone", "mic"), .cameraMissing)
+        XCTAssertEqual(missing("cam", "gone"), .microphoneMissing)
+        XCTAssertNotNil(RecordingError.cameraMissing.errorDescription)
+    }
 }

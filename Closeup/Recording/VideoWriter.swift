@@ -164,6 +164,8 @@ enum RecordingError: LocalizedError {
     case noSourceSelected
     case cameraAccessDenied
     case microphoneAccessDenied
+    case cameraMissing
+    case microphoneMissing
 
     var errorDescription: String? {
         switch self {
@@ -171,6 +173,10 @@ enum RecordingError: LocalizedError {
             "Closeup can't use the camera. Turn it on in System Settings → Privacy & Security → Camera, or pick “No camera”."
         case .microphoneAccessDenied:
             "Closeup can't use the microphone. Turn it on in System Settings → Privacy & Security → Microphone, or pick “No microphone”."
+        case .cameraMissing:
+            "The camera you chose isn't connected. Plug it in, or pick another camera or “No camera”."
+        case .microphoneMissing:
+            "The microphone you chose isn't connected. Plug it in, or pick another microphone or “No microphone”."
         case .noFramesCaptured: "No frames were captured."
         case .writerSetupFailed: "Couldn't set up the video file."
         case .writerFailed: "Couldn't finish writing the video file."
