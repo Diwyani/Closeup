@@ -73,6 +73,11 @@ final class VideoWriter: @unchecked Sendable {
     func append(_ sampleBuffer: CMSampleBuffer) {
         dispatchPrecondition(condition: .onQueue(queue))
         guard !isFinishing, let pixelBuffer = sampleBuffer.imageBuffer else { return }
+        // Once the file has failed (disk full, drive unplugged) nothing more can be written.
+        guard assetWriter.status == .writing else {
+            droppedFrameCount += 1
+            return
+        }
 
         let time = sampleBuffer.presentationTimeStamp
         if firstFrameTime == nil {
@@ -105,6 +110,13 @@ final class VideoWriter: @unchecked Sendable {
         return isDroppingForMemory
     }
 
+    #if CLOSEUP_TESTS
+    /// Tests only: puts the file in the state a full disk would.
+    func breakForTesting() {
+        queue.sync { assetWriter.cancelWriting() }
+    }
+    #endif
+
     /// Closes the file. `endTime` is the host-clock moment the user pressed stop.
     func finish(at endTime: Double) async throws -> Summary {
         try await withCheckedThrowingContinuation { continuation in
@@ -113,6 +125,13 @@ final class VideoWriter: @unchecked Sendable {
                 guard let firstFrameTime, let lastFrameTime else {
                     assetWriter.cancelWriting()
                     continuation.resume(throwing: RecordingError.noFramesCaptured)
+                    return
+                }
+                // If the file already failed while recording, say so. (Finishing
+                // a failed file is a programming error that would crash the app.)
+                guard assetWriter.status == .writing else {
+                    Logger.recording.error("Writer failed while recording: \(String(describing: self.assetWriter.error), privacy: .public)")
+                    continuation.resume(throwing: assetWriter.error ?? RecordingError.writerFailed)
                     return
                 }
                 input.markAsFinished()
