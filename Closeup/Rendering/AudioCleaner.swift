@@ -119,12 +119,15 @@ enum AudioCleaner {
         let gain = Float(pow(10, min(max(targetLevel - level, -12), 24) / 20))
 
         file.framePosition = 0
-        let out = try AVAudioFile(forWriting: output, settings: [
+        var settings: [String: Any] = [
             AVFormatIDKey: kAudioFormatMPEG4AAC,
             AVSampleRateKey: format.sampleRate,
             AVNumberOfChannelsKey: channels,
-            AVEncoderBitRateKey: 128_000 * channels,
-        ], commonFormat: .pcmFormatFloat32, interleaved: false)
+        ]
+        // Low sample rates (Bluetooth headsets record at 16 or 24 kHz) can't
+        // be encoded at this bitrate; there the encoder picks its own.
+        if format.sampleRate >= 44_100 { settings[AVEncoderBitRateKey] = 128_000 * channels }
+        let out = try AVAudioFile(forWriting: output, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
         while file.framePosition < file.length {
             try file.read(into: buffer, frameCount: window)
             guard let data = buffer.floatChannelData, buffer.frameLength > 0 else { break }
