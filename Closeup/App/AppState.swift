@@ -68,6 +68,9 @@ final class AppState {
 
     @ObservationIgnored private var session: RecordingSession?
     @ObservationIgnored private var countdownTask: Task<Void, Never>?
+    /// True for the instant between the countdown ending and capture running.
+    /// Too late to cancel by then: the next press stops the recording instead.
+    @ObservationIgnored private var isStartingCapture = false
     @ObservationIgnored private let countdown = CountdownOverlay()
     @ObservationIgnored private let cameraPreview = CameraPreview()
     @ObservationIgnored private var hotKey: GlobalHotKey?
@@ -212,16 +215,22 @@ final class AppState {
         phase = .countdown(3)
 
         countdownTask = Task {
+            // Cancelling can land at any pause below. Wherever it lands, the
+            // session made here is thrown away, so the camera never stays on
+            // and no empty folder is left behind.
+            var started: RecordingSession?
             do {
                 // Refresh first: the window may have moved or resized since the list loaded.
                 await refreshSources()
+                try Task.checkCancellation()
                 guard let target = makeTarget() else { throw RecordingError.noSourceSelected }
                 let session = try RecordingSession(target: target, options: recordingOptions)
+                started = session
                 self.session = session
                 // Camera/mic permission prompts appear here, before the countdown,
                 // and the camera warms up while we count.
                 try await session.prepare()
-                if Task.isCancelled { return }
+                try Task.checkCancellation()
 
                 // Out of the way, unless you're filming Closeup itself.
                 if !includesCloseup { hideMainWindow() }
@@ -233,10 +242,11 @@ final class AppState {
                 for number in [3, 2, 1] {
                     phase = .countdown(number)
                     countdown.show(number, on: target.screen)
-                    try? await Task.sleep(for: .seconds(1))
-                    if Task.isCancelled { return }
+                    try await Task.sleep(for: .seconds(1))
                 }
                 countdown.hide()
+                isStartingCapture = true
+                defer { isStartingCapture = false }
 
                 // AppState lives as long as the app, so a strong reference is fine.
                 session.onUnexpectedStop = { _ in
@@ -244,6 +254,12 @@ final class AppState {
                 }
                 try await session.start()
                 phase = .recording(since: .now)
+            } catch is CancellationError {
+                // cancelCountdown() already reset the screen; just clean up.
+                if let started {
+                    if session === started { session = nil }
+                    await started.cancel()
+                }
             } catch {
                 await discardSession()
                 fail(error)
@@ -252,6 +268,7 @@ final class AppState {
     }
 
     private func cancelCountdown() {
+        guard !isStartingCapture else { return }
         countdownTask?.cancel()
         countdownTask = nil
         countdown.hide()
