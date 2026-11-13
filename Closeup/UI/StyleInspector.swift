@@ -561,6 +561,9 @@ struct ExportControls: View {
         if let error = model.exportError {
             Text(error).foregroundStyle(.red)
         }
+        if let error = model.saveError {
+            Text(error).foregroundStyle(.red)
+        }
     }
 }
 

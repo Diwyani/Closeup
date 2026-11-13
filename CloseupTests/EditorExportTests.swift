@@ -166,4 +166,12 @@ final class EditorExportTests: XCTestCase {
         XCTAssertEqual(model.style.backgroundImage, first)
         XCTAssertTrue(FileManager.default.fileExists(atPath: project.folder.appending(path: first).path))
     }
+
+    /// A change made a moment before quitting used to be lost.
+    func testAChangeMadeJustBeforeQuittingIsSaved() async throws {
+        let model = try await ProjectEditorModel.load(project)
+        model.style.padding = 44
+        NotificationCenter.default.post(name: NSApplication.willTerminateNotification, object: nil)
+        XCTAssertEqual(try ExportStyle.load(from: project.styleURL).padding, 44)
+    }
 }

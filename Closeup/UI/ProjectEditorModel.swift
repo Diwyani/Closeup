@@ -1,6 +1,7 @@
 import AppKit
 import AVFoundation
 import Observation
+import os
 
 /// State for editing one recording: its style, the live preview and exporting.
 ///
@@ -95,6 +96,7 @@ final class ProjectEditorModel {
         model.rebuildTracks()
         model.rebuildTimeline()
         model.observePlayhead()
+        model.saveWhenQuitting()
         model.detectSpeech()
         return model
     }
@@ -688,12 +690,38 @@ final class ProjectEditorModel {
     /// Saves style.json shortly after the last change, not on every slider tick.
     private func scheduleSave() {
         saveTask?.cancel()
-        let style = style
-        let url = project.styleURL
+        hasUnsavedStyle = true
         saveTask = Task {
             try? await Task.sleep(for: .milliseconds(400))
             guard !Task.isCancelled else { return }
-            try? style.save(to: url)
+            saveStyleNow()
+        }
+    }
+
+    @ObservationIgnored private var hasUnsavedStyle = false
+    /// Shown in the editor if the settings can't be saved (e.g. the disk is full).
+    private(set) var saveError: String?
+
+    /// Writes any change that's still waiting. Also called when the app quits,
+    /// so a change made a moment before quitting isn't lost.
+    func saveStyleNow() {
+        guard hasUnsavedStyle else { return }
+        saveTask?.cancel()
+        do {
+            try style.save(to: project.styleURL)
+            hasUnsavedStyle = false
+            saveError = nil
+        } catch {
+            Logger.recording.error("Couldn't save style.json: \(error.localizedDescription, privacy: .public)")
+            saveError = "Couldn't save your changes: \(error.localizedDescription)"
+        }
+    }
+
+    private func saveWhenQuitting() {
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.saveStyleNow() }
         }
     }
 
