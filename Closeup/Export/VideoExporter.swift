@@ -85,7 +85,7 @@ enum VideoExporter {
     static let fps = 60
 
     /// Exports into the recording's folder, replacing an earlier export at
-    /// the same resolution. `progress` gets 0…1 from a background thread.
+    /// the same resolution once the new one is finished. `progress` gets 0…1 from a background thread.
     static func export(
         project: RecordingProject,
         metadata: RecordingMetadata,
@@ -142,7 +142,10 @@ enum VideoExporter {
         }
 
         // Writer: H.264 + AAC, the formats every app and site accepts.
-        let url = project.exportURL(for: resolution.rawValue)
+        // Written under a working name first, so an earlier export stays where
+        // it is until the new one is completely finished.
+        let finalURL = project.exportURL(for: resolution.rawValue)
+        let url = project.folder.appending(path: ".Exporting \(resolution.rawValue).mp4")
         try? FileManager.default.removeItem(at: url)
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
         writer.shouldOptimizeForNetworkUse = true  // playable while still downloading
@@ -181,7 +184,10 @@ enum VideoExporter {
         }
 
         guard reader.startReading() else { throw reader.error ?? ExportError.readFailed }
-        guard writer.startWriting() else { throw writer.error ?? ExportError.writeFailed }
+        guard writer.startWriting() else {
+            try? FileManager.default.removeItem(at: url)
+            throw writer.error ?? ExportError.writeFailed
+        }
         writer.startSession(atSourceTime: CMTime(seconds: trimStart, preferredTimescale: 600))
 
         // Pump video and audio side by side, as fast as the encoders accept them.
@@ -210,9 +216,14 @@ enum VideoExporter {
         }
 
         await writer.finishWriting()
-        guard writer.status == .completed else { throw writer.error ?? ExportError.writeFailed }
+        guard writer.status == .completed else {
+            try? FileManager.default.removeItem(at: url)
+            throw writer.error ?? ExportError.writeFailed
+        }
+        try? FileManager.default.removeItem(at: finalURL)
+        try FileManager.default.moveItem(at: url, to: finalURL)
         progress(1)
-        return url
+        return finalURL
     }
 
     /// Moves samples from a reader output to a writer input until the output

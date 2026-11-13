@@ -174,4 +174,20 @@ final class EditorExportTests: XCTestCase {
         NotificationCenter.default.post(name: NSApplication.willTerminateNotification, object: nil)
         XCTAssertEqual(try ExportStyle.load(from: project.styleURL).padding, 44)
     }
+
+    /// Export used to delete the previous export before starting, so a
+    /// cancelled or failed export left you with no video at all.
+    func testACancelledExportKeepsThePreviousOne() async throws {
+        let model = try await ProjectEditorModel.load(project)
+        let url = try await FixtureProject.export(model)
+        let before = try Data(contentsOf: url)
+
+        model.export()
+        model.cancelExport()
+        while model.exportProgress != nil { try await Task.sleep(for: .milliseconds(20)) }
+
+        XCTAssertEqual(try Data(contentsOf: url), before)
+        let leftovers = try FileManager.default.contentsOfDirectory(atPath: project.folder.path).filter { $0.contains("Exporting") }
+        XCTAssertEqual(leftovers, [], "no half-written file left behind")
+    }
 }
