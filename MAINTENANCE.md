@@ -161,6 +161,18 @@ For the things no test can do. About ten minutes.
 8. Unplug (or switch off) the chosen camera or microphone, then press Record. It should refuse with a message instead of recording without it.
 9. Record for two minutes with Activity Monitor open. Closeup's memory should stay steady, not climb.
 
+## Disk space
+
+A recording's folder is almost entirely three kinds of file; the `.json` files are tiny.
+
+| File | Decided by | Notes |
+|---|---|---|
+| `screen.mov` | `VideoWriter` (a ceiling of 0.1 bits per pixel per frame) | Small when little moves, large for video or scrolling. This is the original, so lowering it loses sharpness for good, most visibly when zoomed in. Left alone on purpose. |
+| `Export ….mp4` | `ExportResolution.bitrate` in `VideoExporter.swift` | Safe to delete in Finder once posted: an export can always be made again from the editor. |
+| `camera.mov` | `MediaFileWriter.cameraBitrate` | |
+
+The export and camera numbers were halved once, after measuring on a real recording that the picture didn't visibly change. They change file size only; the 720p / 1080p / 4K choice sets the picture size and is separate.
+
 ## Housekeeping
 
 - **Your Team ID must not be committed.** Xcode writes it into `Closeup.xcodeproj/project.pbxproj` when you pick a team. Before committing, check `git diff` for a `DEVELOPMENT_TEAM = …` line and leave it out.
