@@ -58,6 +58,31 @@ final class ExportSettingsTests: XCTestCase {
         XCTAssertEqual(try ExportStyle.load(from: url), style)
     }
 
+    func testAnUnreadableStyleFileIsKeptNotOverwritten() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "closeup-style-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appending(path: "style.json")
+        let backup = folder.appending(path: "style (unreadable).json")
+
+        // Never edited: defaults, and nothing set aside.
+        XCTAssertEqual(ExportStyle.loadKeepingUnreadable(from: url), ExportStyle())
+        XCTAssertFalse(FileManager.default.fileExists(atPath: backup.path))
+
+        // Readable: used as is.
+        var style = ExportStyle()
+        style.padding = 12
+        try style.save(to: url)
+        XCTAssertEqual(ExportStyle.loadKeepingUnreadable(from: url).padding, 12)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: backup.path))
+
+        // Unreadable: defaults, but the file's contents are kept.
+        let damaged = Data(#"{"padding": 12, "aspect": "an aspect from the future"}"#.utf8)
+        try damaged.write(to: url)
+        XCTAssertEqual(ExportStyle.loadKeepingUnreadable(from: url), ExportStyle())
+        XCTAssertEqual(try Data(contentsOf: backup), damaged)
+    }
+
     func testAnEmptyStyleFileGivesTheDefaults() throws {
         let style = try JSONDecoder().decode(ExportStyle.self, from: Data("{}".utf8))
         XCTAssertEqual(style, ExportStyle())

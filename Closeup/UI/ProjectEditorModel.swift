@@ -84,7 +84,7 @@ final class ProjectEditorModel {
     static func load(_ project: RecordingProject) async throws -> ProjectEditorModel {
         let metadata = try project.loadMetadata()
         let cursorLog = try project.loadCursorLog()
-        let style = (try? ExportStyle.load(from: project.styleURL)) ?? ExportStyle()
+        let style = ExportStyle.loadKeepingUnreadable(from: project.styleURL)
         let sprites = CursorSprites.load(cursorLog.shapes ?? [], from: project.cursorsFolder)
         let sources = try await CompositionBuilder.loadSources(
             project: project, metadata: metadata, cleanMicrophone: style.cleansAudio)
