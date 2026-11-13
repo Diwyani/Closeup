@@ -39,6 +39,8 @@ final class MediaFileWriter: @unchecked Sendable {
         if writer == nil {
             do {
                 let writer = try AVAssetWriter(outputURL: url, fileType: fileType)
+                // In one-second pieces, so a crash doesn't lose the file (see VideoWriter).
+                writer.movieFragmentInterval = CMTime(value: 1, timescale: 1)
                 let settings = makeSettings(format)
                 // Ask first: making an input with settings the encoder can't
                 // do is a crash, not an error we could catch.
@@ -54,6 +56,7 @@ final class MediaFileWriter: @unchecked Sendable {
                 self.writer = writer
                 self.input = input
                 firstHostTime = hostTime.seconds
+                RecordingRecovery.noteStart(of: url, hostTime: hostTime.seconds)
             } catch {
                 failed = true
                 Logger.recording.error("Couldn't write \(self.url.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
@@ -78,6 +81,7 @@ final class MediaFileWriter: @unchecked Sendable {
                     }
                     writer?.cancelWriting()
                     try? FileManager.default.removeItem(at: url)
+                    try? FileManager.default.removeItem(at: RecordingProject.startTimeURL(for: url))
                     continuation.resume(returning: nil)
                     return
                 }

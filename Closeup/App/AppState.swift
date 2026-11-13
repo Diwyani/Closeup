@@ -101,6 +101,15 @@ final class AppState {
         }
         refreshProjects()
         Task { await refreshSources() }
+        // Finish any recording that was cut off last time (crash, power cut).
+        Task {
+            let rescued = await RecordingRecovery.recoverAll()
+            guard rescued > 0 else { return }
+            refreshProjects()
+            errorMessage = rescued == 1
+                ? "Closeup recovered a recording that was interrupted. It's in the sidebar."
+                : "Closeup recovered \(rescued) recordings that were interrupted. They're in the sidebar."
+        }
         #if DEBUG
         runAutoRecordIfRequested()
         #endif

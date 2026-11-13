@@ -16,6 +16,7 @@ final class VideoWriter: @unchecked Sendable {
         var duration: Double { endTime - firstFrameTime }
     }
 
+    private let url: URL
     private let assetWriter: AVAssetWriter
     private let input: AVAssetWriterInput
     private let adaptor: AVAssetWriterInputPixelBufferAdaptor
@@ -36,7 +37,12 @@ final class VideoWriter: @unchecked Sendable {
 
     init(url: URL, width: Int, height: Int, fps: Int, queue: DispatchQueue) throws {
         self.queue = queue
+        self.url = url
         assetWriter = try AVAssetWriter(outputURL: url, fileType: .mov)
+        // Write the file in one-second pieces. Without this the file only
+        // becomes playable at Stop, so a crash or power cut loses all of it;
+        // with it, everything up to the last piece survives.
+        assetWriter.movieFragmentInterval = CMTime(value: 1, timescale: 1)
 
         // HEVC rather than H.264: H.264's hardware encoder tops out around 4K,
         // and a 5K/6K display recorded at native size would fail.
@@ -84,6 +90,7 @@ final class VideoWriter: @unchecked Sendable {
             // The video timeline starts at the first frame we actually got.
             assetWriter.startSession(atSourceTime: time)
             firstFrameTime = time
+            RecordingRecovery.noteStart(of: url, hostTime: time.seconds)
             Logger.recording.info("First frame received")
         }
         guard input.isReadyForMoreMediaData, time > (lastFrameTime ?? .negativeInfinity), !isOverMemoryBudget() else {
