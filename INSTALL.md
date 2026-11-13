@@ -75,6 +75,10 @@ You're ready. Press **Record**, and stop with **⌥⇧⌘R** or the menu bar ico
 
 ## Put it in Applications, then never open Xcode again
 
+![Right-click Closeup in the Dock, Show in Finder, drag it onto Applications](docs/install/put-in-applications.gif)
+
+[Watch it as a video (15 s)](docs/install/put-in-applications.mp4)
+
 Right after step 6, while Closeup is open:
 
 1. In the **Dock**, right-click the **Closeup** icon → **Options** → **Show in Finder**. A Finder window opens with Closeup already selected.
