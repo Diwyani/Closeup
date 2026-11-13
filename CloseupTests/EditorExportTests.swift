@@ -43,4 +43,53 @@ final class EditorExportTests: XCTestCase {
         let seconds = try await length(of: url)
         XCTAssertEqual(seconds, 1.5, accuracy: 0.1)
     }
+
+    /// Undo often changes several settings in one go. Turning zoom off and
+    /// cuts on together used to leave the old zooms in the preview and export.
+    func testOneChangeToSeveralSettingsAppliesAllOfThem() async throws {
+        let model = try await ProjectEditorModel.load(project)
+        XCTAssertFalse(model.zoomSegments.isEmpty, "the sample has a click, so it starts with a zoom")
+        var changed = model.style
+        changed.autoZoom = false
+        changed.cutsSilence = true
+        changed.trimStart = 0.25
+        model.style = changed
+        XCTAssertTrue(model.zoomSegments.isEmpty)
+        XCTAssertEqual(model.trimStart, 0.25)
+
+        model.undo()
+        XCTAssertFalse(model.zoomSegments.isEmpty)
+        XCTAssertEqual(model.trimStart, 0)
+        XCTAssertTrue(model.canRedo)
+    }
+
+    func testAutomaticCutShortensTheExport() async throws {
+        let model = try await ProjectEditorModel.load(project)
+        var changed = model.style
+        changed.cutsSilence = true
+        changed.silenceLength = 0.5
+        model.style = changed
+        let cut = try XCTUnwrap(model.timeEdits.first)
+        let url = try await FixtureProject.export(model)
+        let seconds = try await length(of: url)
+        XCTAssertEqual(seconds, 2 - (cut.end - cut.start), accuracy: 0.1)
+    }
+
+    func testUndoAndRedoRestoreSettings() async throws {
+        let model = try await ProjectEditorModel.load(project)
+        XCTAssertFalse(model.canUndo)
+        model.style.padding = 20
+        XCTAssertTrue(model.canUndo)
+        model.undo()
+        XCTAssertEqual(model.style.padding, 80)
+        model.redo()
+        XCTAssertEqual(model.style.padding, 20)
+    }
+
+    func testSettingsAreSavedToStyleFile() async throws {
+        let model = try await ProjectEditorModel.load(project)
+        model.style.padding = 33
+        try await Task.sleep(for: .milliseconds(900))  // saved shortly after the last change
+        XCTAssertEqual(try ExportStyle.load(from: project.styleURL).padding, 33)
+    }
 }

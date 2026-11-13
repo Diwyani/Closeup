@@ -122,6 +122,8 @@ final class ProjectEditorModel {
 
     // MARK: Style
 
+    /// Applies whatever changed. One change can touch several things at once
+    /// (an undo often does), so every part is checked; none skips the others.
     private func styleDidChange(from old: ExportStyle) {
         if !isRestoringStyle { recordUndo(old) }
         defer { scheduleSave() }
@@ -134,19 +136,16 @@ final class ProjectEditorModel {
             || (style.removesFillers && style.captions?.map(\.words) != old.captions?.map(\.words)) {
             timeEdits = currentTimeEdits()
             scheduleTimelineRebuild()
-            return
         }
         if style.aspect != old.aspect {
             player.currentItem?.videoComposition = composition.videoComposition(renderSize: previewSize)
         }
         if style.trimStart != old.trimStart || style.trimEnd != old.trimEnd {
             applyTrim()
-            return
         }
         if style.microphoneVolume != old.microphoneVolume || style.systemVolume != old.systemVolume {
             player.currentItem?.audioMix = composition.audioMix(
                 microphoneVolume: style.microphoneVolume, systemVolume: style.systemVolume)
-            return
         }
         if style.cursorSmoothing != old.cursorSmoothing
             || style.autoZoom != old.autoZoom
@@ -156,9 +155,34 @@ final class ProjectEditorModel {
             || style.zoomSpeed != old.zoomSpeed
             || style.zoomSegments != old.zoomSegments {
             rebuildTracks()
-        } else {
+        } else if Self.changesThePicture(from: old, to: style) {
             updateCompositor()
+        } else {
+            // Nothing to redraw (trim, volume, cuts), but keep the drawing
+            // code's copy of the settings up to date.
+            var compositor = liveCompositor.current
+            compositor.style = style
+            liveCompositor.current = compositor
         }
+    }
+
+    /// Whether anything besides trim, volume and cuts/speed-ups changed.
+    /// Those have their own handling and don't change how a frame is drawn.
+    private static func changesThePicture(from old: ExportStyle, to new: ExportStyle) -> Bool {
+        var a = old
+        a.trimStart = new.trimStart
+        a.trimEnd = new.trimEnd
+        a.autoTrim = new.autoTrim
+        a.microphoneVolume = new.microphoneVolume
+        a.systemVolume = new.systemVolume
+        a.timeEdits = new.timeEdits
+        a.dismissedEdits = new.dismissedEdits
+        a.speedUpIdle = new.speedUpIdle
+        a.idleSpeed = new.idleSpeed
+        a.cutsSilence = new.cutsSilence
+        a.silenceLength = new.silenceLength
+        a.removesFillers = new.removesFillers
+        return a != new
     }
 
     /// Recomputes the cursor path, the zoom segments and the camera.
