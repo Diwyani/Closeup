@@ -38,6 +38,13 @@ struct RecordingProject: Identifiable, Hashable {
     var cursorShapesJournalURL: URL { folder.appending(path: "cursor-shapes-in-progress.json") }
     static func startTimeURL(for file: URL) -> URL { file.appendingPathExtension("start") }
 
+    /// Whether anything was captured at all (screen, camera or sound).
+    var hasMediaFiles: Bool {
+        [videoURL, cameraURL, microphoneURL, systemAudioURL].contains { url in
+            ((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) > 0
+        }
+    }
+
     /// Tidies up once project.json is written.
     func removeInProgressFiles() {
         let files = [inProgressURL, cursorJournalURL, cursorShapesJournalURL]

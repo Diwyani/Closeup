@@ -20,6 +20,19 @@ final class RecordingSession {
     struct Result {
         let project: RecordingProject
         let metadata: RecordingMetadata
+        /// Saved, but not everything went right (e.g. the microphone wasn't recorded).
+        var warnings: [String] = []
+    }
+
+    /// What to tell the user about a recording that was saved without
+    /// something they asked for.
+    static func warnings(
+        cameraWanted: Bool, cameraRecorded: Bool, microphoneWanted: Bool, microphoneRecorded: Bool
+    ) -> [String] {
+        var warnings: [String] = []
+        if cameraWanted, !cameraRecorded { warnings.append("The camera wasn't recorded.") }
+        if microphoneWanted, !microphoneRecorded { warnings.append("The microphone wasn't recorded.") }
+        return warnings
     }
 
     let target: CaptureTarget
@@ -124,8 +137,20 @@ final class RecordingSession {
         do {
             screen = try await recorder.stop(at: endTime)
         } catch {
-            await cancel()
-            throw error
+            // Never throw away what was captured. Close the camera and
+            // microphone files, then save whatever is usable.
+            _ = await deviceRecorder?.stop()
+            deviceRecorder = nil
+            if await RecordingRecovery.recover(project), let metadata = try? project.loadMetadata() {
+                return Result(project: project, metadata: metadata, warnings: [
+                    "The recording stopped early: \(error.localizedDescription) Everything up to that moment was saved.",
+                ])
+            }
+            guard project.hasMediaFiles else {
+                project.delete()
+                throw error
+            }
+            throw RecordingError.partlySaved(reason: error.localizedDescription, folder: project.name)
         }
         let devices = await deviceRecorder?.stop()
         let video = screen.video
@@ -154,7 +179,9 @@ final class RecordingSession {
 
         try project.write(metadata: metadata, cursor: cursorLog)
         project.removeInProgressFiles()
-        return Result(project: project, metadata: metadata)
+        return Result(project: project, metadata: metadata, warnings: Self.warnings(
+            cameraWanted: options.camera != nil, cameraRecorded: metadata.camera != nil,
+            microphoneWanted: options.microphone != nil, microphoneRecorded: metadata.microphone != nil))
     }
 
     /// See `CursorLog.videoTimeline`.

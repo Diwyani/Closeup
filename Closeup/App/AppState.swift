@@ -330,9 +330,16 @@ final class AppState {
             let result = try await session.stop()
             lastRecording = result
             Logger.recording.info("Saved \(result.project.name, privacy: .public)")
-            // Jump straight into the editor for the new recording.
             refreshProjects()
-            sidebarSelection = .project(result.project)
+            if result.warnings.isEmpty {
+                // Jump straight into the editor for the new recording.
+                sidebarSelection = .project(result.project)
+            } else {
+                // Something went wrong: stay here, where the message shows.
+                // The recording is in the sidebar.
+                sidebarSelection = .recorder
+                errorMessage = "Recording saved, but: " + result.warnings.joined(separator: " ")
+            }
         } catch {
             Logger.recording.error("Stop failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = "Recording failed: \(error.localizedDescription)"

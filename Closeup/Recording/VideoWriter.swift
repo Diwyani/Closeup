@@ -27,6 +27,11 @@ final class VideoWriter: @unchecked Sendable {
     private var frameCount = 0
     private var droppedFrameCount = 0
     private var isFinishing = false
+    /// Called once, on the capture queue, if the file fails while recording
+    /// (disk full, drive unplugged), so recording can stop right away
+    /// instead of carrying on with nothing being saved.
+    var onFailure: ((Error) -> Void)?
+    private var hasReportedFailure = false
 
     /// Safety net: in real-time mode AVAssetWriter keeps accepting frames even
     /// when the encoder falls behind, and every waiting frame is held in memory.
@@ -82,6 +87,11 @@ final class VideoWriter: @unchecked Sendable {
         // Once the file has failed (disk full, drive unplugged) nothing more can be written.
         guard assetWriter.status == .writing else {
             droppedFrameCount += 1
+            if !hasReportedFailure {
+                hasReportedFailure = true
+                Logger.recording.error("Video file failed while recording: \(String(describing: self.assetWriter.error), privacy: .public)")
+                onFailure?(assetWriter.error ?? RecordingError.writerFailed)
+            }
             return
         }
 
@@ -164,7 +174,7 @@ final class VideoWriter: @unchecked Sendable {
     }
 }
 
-enum RecordingError: LocalizedError {
+enum RecordingError: LocalizedError, Equatable {
     case noFramesCaptured
     case writerSetupFailed
     case writerFailed
@@ -173,6 +183,8 @@ enum RecordingError: LocalizedError {
     case microphoneAccessDenied
     case cameraMissing
     case microphoneMissing
+    /// Recording failed, but some files were captured and kept.
+    case partlySaved(reason: String, folder: String)
 
     var errorDescription: String? {
         switch self {
@@ -184,6 +196,8 @@ enum RecordingError: LocalizedError {
             "The camera you chose isn't connected. Plug it in, or pick another camera or “No camera”."
         case .microphoneMissing:
             "The microphone you chose isn't connected. Plug it in, or pick another microphone or “No microphone”."
+        case .partlySaved(let reason, let folder):
+            "\(reason) What was captured is in “\(folder)” in your Movies/Closeup folder."
         case .noFramesCaptured: "No frames were captured."
         case .writerSetupFailed: "Couldn't set up the video file."
         case .writerFailed: "Couldn't finish writing the video file."

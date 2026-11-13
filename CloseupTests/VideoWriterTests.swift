@@ -97,4 +97,35 @@ final class VideoWriterTests: XCTestCase {
             // Reaching here without crashing is the point.
         }
     }
+
+    /// A failed file must end the recording at once, not an hour later.
+    func testAFailedFileIsReportedOnceWhileRecording() throws {
+        let writer = try makeWriter()
+        var failures = 0
+        writer.onFailure = { _ in failures += 1 }
+        append([1000, 1000.1], to: writer)
+        XCTAssertEqual(failures, 0)
+        writer.breakForTesting()
+        append([1000.2, 1000.3, 1000.4], to: writer)
+        XCTAssertEqual(failures, 1)
+    }
+
+    @MainActor
+    func testWarningsForARecordingSavedWithoutSomething() {
+        func warnings(_ cameraWanted: Bool, _ camera: Bool, _ microphoneWanted: Bool, _ microphone: Bool) -> [String] {
+            RecordingSession.warnings(
+                cameraWanted: cameraWanted, cameraRecorded: camera, microphoneWanted: microphoneWanted, microphoneRecorded: microphone)
+        }
+        XCTAssertEqual(warnings(false, false, false, false), [], "nothing asked for, nothing missing")
+        XCTAssertEqual(warnings(true, true, true, true), [])
+        XCTAssertEqual(warnings(true, false, true, true), ["The camera wasn't recorded."])
+        XCTAssertEqual(warnings(true, false, true, false).count, 2)
+    }
+
+    func testPartlySavedMessageSaysWhereTheFilesAre() {
+        let error = RecordingError.partlySaved(reason: "No frames were captured.", folder: "Recording 2026-11-01 at 14.03.22")
+        XCTAssertEqual(
+            error.errorDescription,
+            "No frames were captured. What was captured is in “Recording 2026-11-01 at 14.03.22” in your Movies/Closeup folder.")
+    }
 }
