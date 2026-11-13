@@ -39,14 +39,24 @@ final class MediaFileWriter: @unchecked Sendable {
         if writer == nil {
             do {
                 let writer = try AVAssetWriter(outputURL: url, fileType: fileType)
-                let input = AVAssetWriterInput(mediaType: mediaType, outputSettings: makeSettings(format), sourceFormatHint: format)
+                // In one-second pieces, so a crash doesn't lose the file (see VideoWriter).
+                writer.movieFragmentInterval = CMTime(value: 1, timescale: 1)
+                let settings = makeSettings(format)
+                // Ask first: making an input with settings the encoder can't
+                // do is a crash, not an error we could catch.
+                guard writer.canApply(outputSettings: settings, forMediaType: mediaType) else {
+                    throw RecordingError.writerSetupFailed
+                }
+                let input = AVAssetWriterInput(mediaType: mediaType, outputSettings: settings, sourceFormatHint: format)
                 input.expectsMediaDataInRealTime = true
+                guard writer.canAdd(input) else { throw RecordingError.writerSetupFailed }
                 writer.add(input)
                 guard writer.startWriting() else { throw writer.error ?? RecordingError.writerSetupFailed }
                 writer.startSession(atSourceTime: sampleBuffer.presentationTimeStamp)
                 self.writer = writer
                 self.input = input
                 firstHostTime = hostTime.seconds
+                RecordingRecovery.noteStart(of: url, hostTime: hostTime.seconds)
             } catch {
                 failed = true
                 Logger.recording.error("Couldn't write \(self.url.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
@@ -71,6 +81,7 @@ final class MediaFileWriter: @unchecked Sendable {
                     }
                     writer?.cancelWriting()
                     try? FileManager.default.removeItem(at: url)
+                    try? FileManager.default.removeItem(at: RecordingProject.startTimeURL(for: url))
                     continuation.resume(returning: nil)
                     return
                 }
@@ -84,6 +95,11 @@ final class MediaFileWriter: @unchecked Sendable {
 
     // MARK: Settings
 
+    /// What the camera file spends per second. A 720p face in a bubble
+    /// doesn't need more; at twice this the camera file was often bigger
+    /// than the screen recording next to it.
+    static let cameraBitrate = 3_000_000
+
     /// H.264 at the camera's own size.
     static func cameraSettings(_ format: CMFormatDescription) -> [String: Any] {
         let size = CMVideoFormatDescriptionGetDimensions(format)
@@ -91,19 +107,31 @@ final class MediaFileWriter: @unchecked Sendable {
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: size.width,
             AVVideoHeightKey: size.height,
-            AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: 6_000_000],
+            AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: cameraBitrate],
         ]
     }
 
-    /// AAC at the source's sample rate, mono or stereo.
+    /// AAC, mono or stereo, at the source's sample rate where AAC allows it.
     static func audioSettings(_ format: CMFormatDescription) -> [String: Any] {
         let description = CMAudioFormatDescriptionGetStreamBasicDescription(format)?.pointee
-        let channels = min(2, max(1, Int(description?.mChannelsPerFrame ?? 1)))
-        return [
+        return audioSettings(
+            sampleRate: description?.mSampleRate ?? 48_000, channels: Int(description?.mChannelsPerFrame ?? 1))
+    }
+
+    /// - Above 48 kHz (studio audio interfaces at 88.2, 96 or 192 kHz): recorded
+    ///   at 48 kHz, the most AAC handles. Asking for more crashed the app.
+    /// - Below 44.1 kHz (Bluetooth headsets use 16 or 24 kHz): the usual
+    ///   bitrate isn't allowed there and the file failed to start, so the
+    ///   encoder picks its own.
+    static func audioSettings(sampleRate: Double, channels sourceChannels: Int) -> [String: Any] {
+        let channels = min(2, max(1, sourceChannels))
+        let rate = sampleRate > 0 ? min(sampleRate, 48_000) : 48_000
+        var settings: [String: Any] = [
             AVFormatIDKey: kAudioFormatMPEG4AAC,
-            AVSampleRateKey: description?.mSampleRate ?? 48_000,
+            AVSampleRateKey: rate,
             AVNumberOfChannelsKey: channels,
-            AVEncoderBitRateKey: channels == 1 ? 128_000 : 192_000,
         ]
+        if rate >= 44_100 { settings[AVEncoderBitRateKey] = channels == 1 ? 128_000 : 192_000 }
+        return settings
     }
 }

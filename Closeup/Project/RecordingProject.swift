@@ -32,6 +32,26 @@ struct RecordingProject: Identifiable, Hashable {
     /// PNGs of the cursor shapes listed in cursor.json.
     var cursorsFolder: URL { folder.appending(path: "cursors", directoryHint: .isDirectory) }
 
+    // Present only while recording; see RecordingRecovery.
+    var inProgressURL: URL { folder.appending(path: "recording-in-progress.json") }
+    var cursorJournalURL: URL { folder.appending(path: "cursor-in-progress.jsonl") }
+    var cursorShapesJournalURL: URL { folder.appending(path: "cursor-shapes-in-progress.json") }
+    static func startTimeURL(for file: URL) -> URL { file.appendingPathExtension("start") }
+
+    /// Whether anything was captured at all (screen, camera or sound).
+    var hasMediaFiles: Bool {
+        [videoURL, cameraURL, microphoneURL, systemAudioURL].contains { url in
+            ((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) > 0
+        }
+    }
+
+    /// Tidies up once project.json is written.
+    func removeInProgressFiles() {
+        let files = [inProgressURL, cursorJournalURL, cursorShapesJournalURL]
+            + [videoURL, cameraURL, microphoneURL, systemAudioURL].map(Self.startTimeURL(for:))
+        for file in files { try? FileManager.default.removeItem(at: file) }
+    }
+
     func exportURL(for label: String) -> URL {
         folder.appending(path: "Export \(label).mp4")
     }
@@ -65,7 +85,7 @@ struct RecordingProject: Identifiable, Hashable {
         return RecordingProject(folder: folder)
     }
 
-    /// All projects in the library, newest first. (Used by the Phase 2 project list.)
+    /// All projects in the library, newest first, for the sidebar.
     static func all() -> [RecordingProject] {
         let folders = (try? FileManager.default.contentsOfDirectory(
             at: libraryFolder, includingPropertiesForKeys: [.creationDateKey], options: .skipsHiddenFiles)) ?? []

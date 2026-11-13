@@ -1,0 +1,193 @@
+import AVFoundation
+import XCTest
+
+/// The editor and the exporter working together, on the sample recording.
+/// Each test here guards a bug that was found and fixed.
+@MainActor
+final class EditorExportTests: XCTestCase {
+    private var project: RecordingProject!
+
+    override func setUpWithError() throws {
+        project = try FixtureProject.make()
+    }
+
+    override func tearDown() {
+        project.delete()
+    }
+
+    private func length(of url: URL) async throws -> Double {
+        try await AVURLAsset(url: url).load(.duration).seconds
+    }
+
+    func testExportWithoutEditsIsTheWholeRecording() async throws {
+        let model = try await ProjectEditorModel.load(project)
+        let url = try await FixtureProject.export(model)
+        let seconds = try await length(of: url)
+        XCTAssertEqual(seconds, 2, accuracy: 0.1)
+    }
+
+    /// Trimming used to be ignored by Export if it was the last thing you changed.
+    func testExportUsesATrimMadeJustBeforeExporting() async throws {
+        let model = try await ProjectEditorModel.load(project)
+        model.setTrimStart(0.5)
+        model.setTrimEnd(1.5)
+        let url = try await FixtureProject.export(model)
+        let seconds = try await length(of: url)
+        XCTAssertEqual(seconds, 1, accuracy: 0.1)
+    }
+
+    func testExportAppliesCutsAndSpeedUps() async throws {
+        let model = try await ProjectEditorModel.load(project)
+        model.style.timeEdits = [TimeEdit(kind: .cut, start: 0.5, end: 1.0)]
+        let url = try await FixtureProject.export(model)
+        let seconds = try await length(of: url)
+        XCTAssertEqual(seconds, 1.5, accuracy: 0.1)
+    }
+
+    /// Undo often changes several settings in one go. Turning zoom off and
+    /// cuts on together used to leave the old zooms in the preview and export.
+    func testOneChangeToSeveralSettingsAppliesAllOfThem() async throws {
+        let model = try await ProjectEditorModel.load(project)
+        XCTAssertFalse(model.zoomSegments.isEmpty, "the sample has a click, so it starts with a zoom")
+        var changed = model.style
+        changed.autoZoom = false
+        changed.cutsSilence = true
+        changed.trimStart = 0.25
+        model.style = changed
+        XCTAssertTrue(model.zoomSegments.isEmpty)
+        XCTAssertEqual(model.trimStart, 0.25)
+
+        model.undo()
+        XCTAssertFalse(model.zoomSegments.isEmpty)
+        XCTAssertEqual(model.trimStart, 0)
+        XCTAssertTrue(model.canRedo)
+    }
+
+    /// After an export, automatic cuts used to become impossible to delete.
+    func testAutomaticCutsCanStillBeDeletedAfterExporting() async throws {
+        let model = try await ProjectEditorModel.load(project)
+        var changed = model.style
+        changed.cutsSilence = true
+        changed.silenceLength = 0.5  // the sample's quiet second half is now a cut
+        model.style = changed
+        XCTAssertEqual(model.automaticEditCount(.cut), 1)
+        // Let the timeline settle first, as it has by the time anyone clicks Export.
+        try await Task.sleep(for: .milliseconds(600))
+
+        _ = try await FixtureProject.export(model)
+        XCTAssertEqual(model.automaticEditCount(.cut), 1)
+
+        model.selectedID = try XCTUnwrap(model.timeEdits.first).id
+        model.deleteSelected()
+        XCTAssertTrue(model.timeEdits.isEmpty)
+        XCTAssertEqual(model.style.dismissedEdits.count, 1, "remembered, so it doesn't come back")
+    }
+
+    func testAutomaticCutShortensTheExport() async throws {
+        let model = try await ProjectEditorModel.load(project)
+        var changed = model.style
+        changed.cutsSilence = true
+        changed.silenceLength = 0.5
+        model.style = changed
+        let cut = try XCTUnwrap(model.timeEdits.first)
+        let url = try await FixtureProject.export(model)
+        let seconds = try await length(of: url)
+        XCTAssertEqual(seconds, 2 - (cut.end - cut.start), accuracy: 0.1)
+    }
+
+    func testUndoAndRedoRestoreSettings() async throws {
+        let model = try await ProjectEditorModel.load(project)
+        XCTAssertFalse(model.canUndo)
+        model.style.padding = 20
+        XCTAssertTrue(model.canUndo)
+        model.undo()
+        XCTAssertEqual(model.style.padding, 80)
+        model.redo()
+        XCTAssertEqual(model.style.padding, 20)
+    }
+
+    func testSettingsAreSavedToStyleFile() async throws {
+        let model = try await ProjectEditorModel.load(project)
+        model.style.padding = 33
+        try await Task.sleep(for: .milliseconds(900))  // saved shortly after the last change
+        XCTAssertEqual(try ExportStyle.load(from: project.styleURL).padding, 33)
+    }
+
+    /// If the encoder dropped the very first frame while recording, the video
+    /// starts with a short gap. Such recordings used to fail to export with
+    /// "Missing frame for compositing".
+    func testARecordingWhoseVideoStartsLateStillExports() async throws {
+        try FileManager.default.removeItem(at: project.videoURL)
+        try Self.writeVideo(to: project.videoURL, firstFrameAt: 0.5, seconds: 2)
+        let model = try await ProjectEditorModel.load(project)
+        let url = try await FixtureProject.export(model)
+        let seconds = try await length(of: url)
+        XCTAssertEqual(seconds, 2, accuracy: 0.1)
+    }
+
+    /// A plain grey 640×400 video with nothing before `firstFrameAt`.
+    static func writeVideo(to url: URL, firstFrameAt start: Double, seconds: Double) throws {
+        let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
+        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
+            AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: 640, AVVideoHeightKey: 400,
+        ])
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: nil)
+        writer.add(input)
+        guard writer.startWriting() else { throw writer.error! }
+        writer.startSession(atSourceTime: .zero)
+        var frame = Int(start * 30)
+        while Double(frame) / 30 < seconds {
+            while !input.isReadyForMoreMediaData { usleep(2000) }
+            let sample = VideoWriterTests.frame(at: 0, width: 640, height: 400)
+            adaptor.append(sample.imageBuffer!, withPresentationTime: CMTime(value: CMTimeValue(frame), timescale: 30))
+            frame += 1
+        }
+        input.markAsFinished()
+        writer.endSession(atSourceTime: CMTime(seconds: seconds, preferredTimescale: 600))
+        let done = DispatchSemaphore(value: 0)
+        writer.finishWriting { done.signal() }
+        done.wait()
+        guard writer.status == .completed else { throw writer.error! }
+    }
+
+    /// Replacing the background picture used to delete the old one, so Undo
+    /// brought back a plain colour instead of the picture.
+    func testUndoBringsBackThePreviousBackgroundPicture() async throws {
+        let model = try await ProjectEditorModel.load(project)
+        let picture = FixtureProject.folder.appending(path: "golden-0.30.png")
+        model.useBackgroundImage(picture)
+        let first = try XCTUnwrap(model.style.backgroundImage)
+        XCTAssertEqual(model.style.backgroundKind, .image)
+        try await Task.sleep(for: .milliseconds(700))  // so the next change is its own undo step
+        model.useBackgroundImage(picture)
+        XCTAssertNotEqual(model.style.backgroundImage, first)
+
+        model.undo()
+        XCTAssertEqual(model.style.backgroundImage, first)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: project.folder.appending(path: first).path))
+    }
+
+    /// A change made a moment before quitting used to be lost.
+    func testAChangeMadeJustBeforeQuittingIsSaved() async throws {
+        let model = try await ProjectEditorModel.load(project)
+        model.style.padding = 44
+        NotificationCenter.default.post(name: NSApplication.willTerminateNotification, object: nil)
+        XCTAssertEqual(try ExportStyle.load(from: project.styleURL).padding, 44)
+    }
+
+    /// Export used to delete the previous export before starting, so a
+    /// cancelled or failed export left you with no video at all.
+    func testACancelledExportKeepsThePreviousOne() async throws {
+        let model = try await ProjectEditorModel.load(project)
+        let url = try await FixtureProject.export(model)
+        let before = try Data(contentsOf: url)
+
+        model.export()
+        model.cancelExport()
+        while model.exportProgress != nil { try await Task.sleep(for: .milliseconds(20)) }
+
+        XCTAssertEqual(try Data(contentsOf: url), before)
+        let leftovers = try FileManager.default.contentsOfDirectory(atPath: project.folder.path).filter { $0.contains("Exporting") }
+        XCTAssertEqual(leftovers, [], "no half-written file left behind")
+    }
+}

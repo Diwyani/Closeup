@@ -39,6 +39,8 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
             MediaFileWriter(url: $0, fileType: .m4a, mediaType: .audio, queue: audioQueue, settings: MediaFileWriter.audioSettings)
         }
         super.init()
+        // A failed video file ends the recording like the system stopping it.
+        writer.onFailure = { [weak self] error in self?.onUnexpectedStop?(error) }
     }
 
     func start() async throws {

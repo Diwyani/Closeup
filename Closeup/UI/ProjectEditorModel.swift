@@ -1,6 +1,7 @@
 import AppKit
 import AVFoundation
 import Observation
+import os
 
 /// State for editing one recording: its style, the live preview and exporting.
 ///
@@ -84,7 +85,7 @@ final class ProjectEditorModel {
     static func load(_ project: RecordingProject) async throws -> ProjectEditorModel {
         let metadata = try project.loadMetadata()
         let cursorLog = try project.loadCursorLog()
-        let style = (try? ExportStyle.load(from: project.styleURL)) ?? ExportStyle()
+        let style = ExportStyle.loadKeepingUnreadable(from: project.styleURL)
         let sprites = CursorSprites.load(cursorLog.shapes ?? [], from: project.cursorsFolder)
         let sources = try await CompositionBuilder.loadSources(
             project: project, metadata: metadata, cleanMicrophone: style.cleansAudio)
@@ -95,6 +96,7 @@ final class ProjectEditorModel {
         model.rebuildTracks()
         model.rebuildTimeline()
         model.observePlayhead()
+        model.saveWhenQuitting()
         model.detectSpeech()
         return model
     }
@@ -122,6 +124,8 @@ final class ProjectEditorModel {
 
     // MARK: Style
 
+    /// Applies whatever changed. One change can touch several things at once
+    /// (an undo often does), so every part is checked; none skips the others.
     private func styleDidChange(from old: ExportStyle) {
         if !isRestoringStyle { recordUndo(old) }
         defer { scheduleSave() }
@@ -134,19 +138,16 @@ final class ProjectEditorModel {
             || (style.removesFillers && style.captions?.map(\.words) != old.captions?.map(\.words)) {
             timeEdits = currentTimeEdits()
             scheduleTimelineRebuild()
-            return
         }
         if style.aspect != old.aspect {
             player.currentItem?.videoComposition = composition.videoComposition(renderSize: previewSize)
         }
         if style.trimStart != old.trimStart || style.trimEnd != old.trimEnd {
             applyTrim()
-            return
         }
         if style.microphoneVolume != old.microphoneVolume || style.systemVolume != old.systemVolume {
             player.currentItem?.audioMix = composition.audioMix(
                 microphoneVolume: style.microphoneVolume, systemVolume: style.systemVolume)
-            return
         }
         if style.cursorSmoothing != old.cursorSmoothing
             || style.autoZoom != old.autoZoom
@@ -156,9 +157,34 @@ final class ProjectEditorModel {
             || style.zoomSpeed != old.zoomSpeed
             || style.zoomSegments != old.zoomSegments {
             rebuildTracks()
-        } else {
+        } else if Self.changesThePicture(from: old, to: style) {
             updateCompositor()
+        } else {
+            // Nothing to redraw (trim, volume, cuts), but keep the drawing
+            // code's copy of the settings up to date.
+            var compositor = liveCompositor.current
+            compositor.style = style
+            liveCompositor.current = compositor
         }
+    }
+
+    /// Whether anything besides trim, volume and cuts/speed-ups changed.
+    /// Those have their own handling and don't change how a frame is drawn.
+    private static func changesThePicture(from old: ExportStyle, to new: ExportStyle) -> Bool {
+        var a = old
+        a.trimStart = new.trimStart
+        a.trimEnd = new.trimEnd
+        a.autoTrim = new.autoTrim
+        a.microphoneVolume = new.microphoneVolume
+        a.systemVolume = new.systemVolume
+        a.timeEdits = new.timeEdits
+        a.dismissedEdits = new.dismissedEdits
+        a.speedUpIdle = new.speedUpIdle
+        a.idleSpeed = new.idleSpeed
+        a.cutsSilence = new.cutsSilence
+        a.silenceLength = new.silenceLength
+        a.removesFillers = new.removesFillers
+        return a != new
     }
 
     /// Recomputes the cursor path, the zoom segments and the camera.
@@ -509,7 +535,7 @@ final class ProjectEditorModel {
         backgroundError = nil
         do {
             let name = try BackgroundImage.importImage(from: url, into: project.folder)
-            if let old = style.backgroundImage { try? FileManager.default.removeItem(at: project.folder.appending(path: old)) }
+            // The previous picture's file stays in the folder, so Undo can bring it back.
             var changed = style
             changed.backgroundImage = name
             changed.backgroundKind = .image
@@ -664,12 +690,38 @@ final class ProjectEditorModel {
     /// Saves style.json shortly after the last change, not on every slider tick.
     private func scheduleSave() {
         saveTask?.cancel()
-        let style = style
-        let url = project.styleURL
+        hasUnsavedStyle = true
         saveTask = Task {
             try? await Task.sleep(for: .milliseconds(400))
             guard !Task.isCancelled else { return }
-            try? style.save(to: url)
+            saveStyleNow()
+        }
+    }
+
+    @ObservationIgnored private var hasUnsavedStyle = false
+    /// Shown in the editor if the settings can't be saved (e.g. the disk is full).
+    private(set) var saveError: String?
+
+    /// Writes any change that's still waiting. Also called when the app quits,
+    /// so a change made a moment before quitting isn't lost.
+    func saveStyleNow() {
+        guard hasUnsavedStyle else { return }
+        saveTask?.cancel()
+        do {
+            try style.save(to: project.styleURL)
+            hasUnsavedStyle = false
+            saveError = nil
+        } catch {
+            Logger.recording.error("Couldn't save style.json: \(error.localizedDescription, privacy: .public)")
+            saveError = "Couldn't save your changes: \(error.localizedDescription)"
+        }
+    }
+
+    private func saveWhenQuitting() {
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.saveStyleNow() }
         }
     }
 
@@ -685,7 +737,14 @@ final class ProjectEditorModel {
         let project = project
         let metadata = metadata
         var compositor = liveCompositor.current
-        compositor.timeMap = TimeMap(edits: currentTimeEdits(), duration: duration)
+        // Always export with the settings as they are right now. (The preview's
+        // copy isn't refreshed by trim or volume changes, so on its own it
+        // could be one change behind.)
+        compositor.style = style
+        // `timeEdits` is always current. (Working the automatic edits out again
+        // here would give them new identities, and the ones on the timeline
+        // could then no longer be deleted.)
+        compositor.timeMap = TimeMap(edits: timeEdits, duration: duration)
         let resolution = resolution
         exportTask = Task {
             do {

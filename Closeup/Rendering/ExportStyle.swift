@@ -1,5 +1,6 @@
 import CoreImage
 import Foundation
+import os
 
 /// Everything that makes a raw recording look polished. Saved per recording
 /// as style.json, so it stays editable.
@@ -221,6 +222,25 @@ struct ExportStyle: Codable, Equatable, Sendable {
 
     static func load(from url: URL) throws -> ExportStyle {
         try JSONDecoder().decode(ExportStyle.self, from: Data(contentsOf: url))
+    }
+
+    /// The saved settings, or the defaults for a recording never edited.
+    ///
+    /// A style.json that can't be read (damaged, or written by a newer
+    /// Closeup) is set aside as "style (unreadable).json" first. Otherwise
+    /// the next change in the editor would overwrite it, and every zoom,
+    /// caption and title in it would be gone for good.
+    static func loadKeepingUnreadable(from url: URL) -> ExportStyle {
+        guard FileManager.default.fileExists(atPath: url.path) else { return ExportStyle() }
+        do {
+            return try load(from: url)
+        } catch {
+            let backup = url.deletingLastPathComponent().appending(path: "style (unreadable).json")
+            try? FileManager.default.removeItem(at: backup)
+            try? FileManager.default.copyItem(at: url, to: backup)
+            Logger.recording.error("Couldn't read \(url.path, privacy: .public), kept a copy: \(String(describing: error), privacy: .public)")
+            return ExportStyle()
+        }
     }
 
     func save(to url: URL) throws {

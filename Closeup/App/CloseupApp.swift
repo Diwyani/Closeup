@@ -5,6 +5,8 @@ struct CloseupApp: App {
     // One shared brain: the window, the menu bar and the global hotkey all
     // talk to the same AppState.
     @State private var appState = AppState()
+    // Saves a recording in progress before the app quits.
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
         Window("Closeup", id: AppState.mainWindowID) {

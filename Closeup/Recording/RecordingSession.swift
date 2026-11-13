@@ -20,6 +20,19 @@ final class RecordingSession {
     struct Result {
         let project: RecordingProject
         let metadata: RecordingMetadata
+        /// Saved, but not everything went right (e.g. the microphone wasn't recorded).
+        var warnings: [String] = []
+    }
+
+    /// What to tell the user about a recording that was saved without
+    /// something they asked for.
+    static func warnings(
+        cameraWanted: Bool, cameraRecorded: Bool, microphoneWanted: Bool, microphoneRecorded: Bool
+    ) -> [String] {
+        var warnings: [String] = []
+        if cameraWanted, !cameraRecorded { warnings.append("The camera wasn't recorded.") }
+        if microphoneWanted, !microphoneRecorded { warnings.append("The microphone wasn't recorded.") }
+        return warnings
     }
 
     let target: CaptureTarget
@@ -45,7 +58,9 @@ final class RecordingSession {
             project.delete()
             throw error
         }
-        cursorLogger = CursorLogger(target: target, shapesFolder: project.cursorsFolder)
+        cursorLogger = CursorLogger(
+            target: target, shapesFolder: project.cursorsFolder,
+            journalURL: project.cursorJournalURL, shapesJournalURL: project.cursorShapesJournalURL)
         recorder.onUnexpectedStop = { [weak self] error in
             Task { @MainActor in self?.onUnexpectedStop?(error) }
         }
@@ -76,7 +91,25 @@ final class RecordingSession {
         deviceRecorder?.onCameraFrame = handler
     }
 
+    /// project.json as far as it's known before Stop. Duration, frame counts
+    /// and the extra files are filled in at the end (or by RecordingRecovery).
+    private var metadataSoFar: RecordingMetadata {
+        RecordingMetadata(
+            createdAt: createdAt,
+            source: .init(kind: target.kind, name: target.name, displayID: target.displayID, windowID: target.windowID),
+            captureFrame: Rect(target.frame),
+            scale: target.scale,
+            videoWidth: target.pixelWidth,
+            videoHeight: target.pixelHeight,
+            fps: Self.framesPerSecond,
+            duration: 0, frameCount: 0, droppedFrameCount: 0,
+            displays: ScreenGeometry.displaySnapshot())
+    }
+
     func start() async throws {
+        RecordingRecovery.begin(project, .init(
+            metadata: metadataSoFar,
+            cameraName: options.camera?.localizedName, microphoneName: options.microphone?.localizedName))
         // Start logging first so the cursor position is known when frame 1 lands.
         cursorLogger.start()
         do {
@@ -104,8 +137,20 @@ final class RecordingSession {
         do {
             screen = try await recorder.stop(at: endTime)
         } catch {
-            await cancel()
-            throw error
+            // Never throw away what was captured. Close the camera and
+            // microphone files, then save whatever is usable.
+            _ = await deviceRecorder?.stop()
+            deviceRecorder = nil
+            if await RecordingRecovery.recover(project), let metadata = try? project.loadMetadata() {
+                return Result(project: project, metadata: metadata, warnings: [
+                    "The recording stopped early: \(error.localizedDescription) Everything up to that moment was saved.",
+                ])
+            }
+            guard project.hasMediaFiles else {
+                project.delete()
+                throw error
+            }
+            throw RecordingError.partlySaved(reason: error.localizedDescription, folder: project.name)
         }
         let devices = await deviceRecorder?.stop()
         let video = screen.video
@@ -124,54 +169,25 @@ final class RecordingSession {
             }
         }
 
-        let metadata = RecordingMetadata(
-            createdAt: createdAt,
-            source: .init(kind: target.kind, name: target.name, displayID: target.displayID, windowID: target.windowID),
-            captureFrame: Rect(target.frame),
-            scale: target.scale,
-            videoWidth: target.pixelWidth,
-            videoHeight: target.pixelHeight,
-            fps: Self.framesPerSecond,
-            duration: video.duration,
-            frameCount: video.frameCount,
-            droppedFrameCount: video.droppedFrameCount,
-            displays: ScreenGeometry.displaySnapshot(),
-            camera: track(project.cameraURL, start: devices?.cameraStart, device: options.camera),
-            microphone: track(project.microphoneURL, start: devices?.microphoneStart, device: options.microphone),
-            systemAudio: track(project.systemAudioURL, start: screen.systemAudioStart))
+        var metadata = metadataSoFar
+        metadata.duration = video.duration
+        metadata.frameCount = video.frameCount
+        metadata.droppedFrameCount = video.droppedFrameCount
+        metadata.camera = track(project.cameraURL, start: devices?.cameraStart, device: options.camera)
+        metadata.microphone = track(project.microphoneURL, start: devices?.microphoneStart, device: options.microphone)
+        metadata.systemAudio = track(project.systemAudioURL, start: screen.systemAudioStart)
 
         try project.write(metadata: metadata, cursor: cursorLog)
-        return Result(project: project, metadata: metadata)
+        project.removeInProgressFiles()
+        return Result(project: project, metadata: metadata, warnings: Self.warnings(
+            cameraWanted: options.camera != nil, cameraRecorded: metadata.camera != nil,
+            microphoneWanted: options.microphone != nil, microphoneRecorded: metadata.microphone != nil))
     }
 
-    /// Re-times raw events so t = 0 is the first video frame.
-    /// Events before the first frame collapse into one starting position and shape.
-    private static func videoTimeline(
+    /// See `CursorLog.videoTimeline`.
+    static func videoTimeline(
         _ raw: [CursorLogger.RawEvent], videoStart: Double, videoEnd: Double
     ) -> [CursorEvent] {
-        var events: [CursorEvent] = []
-        var positionAtStart: CGPoint?
-        var shapeAtStart: Int?
-
-        for event in raw {
-            let t = event.hostTime - videoStart
-            if t < 0 {
-                positionAtStart = event.position
-                if let shape = event.shape { shapeAtStart = shape }
-                continue
-            }
-            if event.hostTime > videoEnd { break }
-            events.append(CursorEvent(
-                t: t, x: event.position.x, y: event.position.y, type: event.type, shape: event.shape))
-        }
-
-        var start: [CursorEvent] = []
-        if let position = positionAtStart {
-            start.append(CursorEvent(t: 0, x: position.x, y: position.y, type: .move))
-            if let shape = shapeAtStart {
-                start.append(CursorEvent(t: 0, x: position.x, y: position.y, type: .shape, shape: shape))
-            }
-        }
-        return start + events
+        CursorLog.videoTimeline(raw, videoStart: videoStart, videoEnd: videoEnd)
     }
 }

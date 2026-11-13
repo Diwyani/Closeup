@@ -62,12 +62,25 @@ final class AppState {
             systemAudio: recordsSystemAudio)
     }
 
+    /// The camera or microphone you chose, if it has been unplugged since.
+    /// Recording without it would quietly give a video with no face or no voice.
+    static func missingDevice(
+        cameraID: String?, microphoneID: String?, cameraIDs: [String], microphoneIDs: [String]
+    ) -> RecordingError? {
+        if let cameraID, !cameraIDs.contains(cameraID) { return .cameraMissing }
+        if let microphoneID, !microphoneIDs.contains(microphoneID) { return .microphoneMissing }
+        return nil
+    }
+
     /// Set by the menu bar label, which is always alive, so we can reopen the
     /// main window even after the user closed it.
     @ObservationIgnored var openMainWindow: (() -> Void)?
 
     @ObservationIgnored private var session: RecordingSession?
     @ObservationIgnored private var countdownTask: Task<Void, Never>?
+    /// True for the instant between the countdown ending and capture running.
+    /// Too late to cancel by then: the next press stops the recording instead.
+    @ObservationIgnored private var isStartingCapture = false
     @ObservationIgnored private let countdown = CountdownOverlay()
     @ObservationIgnored private let cameraPreview = CameraPreview()
     @ObservationIgnored private var hotKey: GlobalHotKey?
@@ -76,6 +89,7 @@ final class AppState {
     let updates = UpdateChecker()
 
     init() {
+        AppDelegate.appState = self
         RecordingProject.moveOldLibrary()
         updates.checkIfDue()
         hotKey = GlobalHotKey { [weak self] in self?.toggleRecording() }
@@ -88,6 +102,15 @@ final class AppState {
         }
         refreshProjects()
         Task { await refreshSources() }
+        // Finish any recording that was cut off last time (crash, power cut).
+        Task {
+            let rescued = await RecordingRecovery.recoverAll()
+            guard rescued > 0 else { return }
+            refreshProjects()
+            errorMessage = rescued == 1
+                ? "Closeup recovered a recording that was interrupted. It's in the sidebar."
+                : "Closeup recovered \(rescued) recordings that were interrupted. They're in the sidebar."
+        }
         #if DEBUG
         runAutoRecordIfRequested()
         #endif
@@ -212,16 +235,27 @@ final class AppState {
         phase = .countdown(3)
 
         countdownTask = Task {
+            // Cancelling can land at any pause below. Wherever it lands, the
+            // session made here is thrown away, so the camera never stays on
+            // and no empty folder is left behind.
+            var started: RecordingSession?
             do {
                 // Refresh first: the window may have moved or resized since the list loaded.
                 await refreshSources()
+                try Task.checkCancellation()
                 guard let target = makeTarget() else { throw RecordingError.noSourceSelected }
+                if let missing = Self.missingDevice(
+                    cameraID: selectedCameraID, microphoneID: selectedMicrophoneID,
+                    cameraIDs: cameras.map(\.uniqueID), microphoneIDs: microphones.map(\.uniqueID)) {
+                    throw missing
+                }
                 let session = try RecordingSession(target: target, options: recordingOptions)
+                started = session
                 self.session = session
                 // Camera/mic permission prompts appear here, before the countdown,
                 // and the camera warms up while we count.
                 try await session.prepare()
-                if Task.isCancelled { return }
+                try Task.checkCancellation()
 
                 // Out of the way, unless you're filming Closeup itself.
                 if !includesCloseup { hideMainWindow() }
@@ -233,10 +267,11 @@ final class AppState {
                 for number in [3, 2, 1] {
                     phase = .countdown(number)
                     countdown.show(number, on: target.screen)
-                    try? await Task.sleep(for: .seconds(1))
-                    if Task.isCancelled { return }
+                    try await Task.sleep(for: .seconds(1))
                 }
                 countdown.hide()
+                isStartingCapture = true
+                defer { isStartingCapture = false }
 
                 // AppState lives as long as the app, so a strong reference is fine.
                 session.onUnexpectedStop = { _ in
@@ -244,6 +279,12 @@ final class AppState {
                 }
                 try await session.start()
                 phase = .recording(since: .now)
+            } catch is CancellationError {
+                // cancelCountdown() already reset the screen; just clean up.
+                if let started {
+                    if session === started { session = nil }
+                    await started.cancel()
+                }
             } catch {
                 await discardSession()
                 fail(error)
@@ -252,12 +293,30 @@ final class AppState {
     }
 
     private func cancelCountdown() {
+        guard !isStartingCapture else { return }
         countdownTask?.cancel()
         countdownTask = nil
         countdown.hide()
         phase = .idle
-        Task { await discardSession() }
+        discardTask = Task { await discardSession() }
         showMainWindow()
+    }
+
+    @ObservationIgnored private var discardTask: Task<Void, Never>?
+
+    /// Called when the app is asked to quit: finish and save a recording in
+    /// progress, or cancel a countdown, and return once nothing is running.
+    func finishBeforeQuitting() async {
+        // At most a minute; saving normally takes a second or two.
+        for _ in 0..<600 where phase != .idle {
+            switch phase {
+            case .recording: await stopRecording()
+            case .countdown: cancelCountdown()  // ignored in the instant capture starts; then it's .recording
+            case .saving, .idle: break
+            }
+            if phase != .idle { try? await Task.sleep(for: .milliseconds(100)) }
+        }
+        await discardTask?.value
     }
 
     private func discardSession() async {
@@ -289,9 +348,16 @@ final class AppState {
             let result = try await session.stop()
             lastRecording = result
             Logger.recording.info("Saved \(result.project.name, privacy: .public)")
-            // Jump straight into the editor for the new recording.
             refreshProjects()
-            sidebarSelection = .project(result.project)
+            if result.warnings.isEmpty {
+                // Jump straight into the editor for the new recording.
+                sidebarSelection = .project(result.project)
+            } else {
+                // Something went wrong: stay here, where the message shows.
+                // The recording is in the sidebar.
+                sidebarSelection = .recorder
+                errorMessage = "Recording saved, but: " + result.warnings.joined(separator: " ")
+            }
         } catch {
             Logger.recording.error("Stop failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = "Recording failed: \(error.localizedDescription)"

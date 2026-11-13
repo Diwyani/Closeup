@@ -7,7 +7,7 @@ import AppKit
 /// permission. (Keystrokes will need it; that's a later phase.)
 @MainActor
 final class CursorLogger {
-    struct RawEvent {
+    struct RawEvent: Codable {
         /// Host-clock seconds; turned into video time when the recording is saved.
         let hostTime: Double
         /// Points from the top-left of the captured area.
@@ -26,6 +26,13 @@ final class CursorLogger {
     private var lastKeyCount: UInt32 = 0
     private var events: [RawEvent] = []
 
+    // Kept on disk as we go, so a crash doesn't lose the cursor (see RecordingRecovery).
+    private let journalURL: URL?
+    private let shapesJournalURL: URL?
+    private var journal: CursorJournal?
+    private var journaledCount = 0
+    private var ticks = 0
+
     // Cursor shapes. Each new look gets an id and a PNG; the same look seen
     // again reuses its id.
     private static let arrowImageData = NSCursor.arrow.image.tiffRepresentation
@@ -34,13 +41,24 @@ final class CursorLogger {
     private var currentShape: Int?
     private var lastShapeCheck = 0.0
 
-    init(target: CaptureTarget, shapesFolder: URL) {
+    init(target: CaptureTarget, shapesFolder: URL, journalURL: URL? = nil, shapesJournalURL: URL? = nil) {
         contentOrigin = Self.contentOrigin(for: target)
         self.shapesFolder = shapesFolder
+        self.journalURL = journalURL
+        self.shapesJournalURL = shapesJournalURL
+    }
+
+    /// Adds the events since last time to the file on disk.
+    private func writeJournal() {
+        guard let journal, journaledCount < events.count else { return }
+        journal.append(events[journaledCount...])
+        journaledCount = events.count
     }
 
     func start() {
         events.removeAll(keepingCapacity: true)
+        journaledCount = 0
+        journal = journalURL.flatMap(CursorJournal.init(url:))
         // Know where the cursor is, and what it looks like, before it moves.
         record(.move)
         checkShape(force: true)
@@ -68,8 +86,12 @@ final class CursorLogger {
         lastKeyCount = Self.keyPressCount
         pollTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.checkShape()
-                self?.checkTyping()
+                guard let self else { return }
+                self.checkShape()
+                self.checkTyping()
+                // Every 2 s.
+                self.ticks += 1
+                if self.ticks % 20 == 0 { self.writeJournal() }
             }
         }
     }
@@ -79,6 +101,9 @@ final class CursorLogger {
         monitors.removeAll()
         pollTimer?.invalidate()
         pollTimer = nil
+        writeJournal()
+        journal?.close()
+        journal = nil
         return (events, shapes)
     }
 
@@ -144,6 +169,9 @@ final class CursorLogger {
                     id: id, file: file,
                     width: cursor.image.size.width, height: cursor.image.size.height,
                     hotspotX: cursor.hotSpot.x, hotspotY: cursor.hotSpot.y))
+                if let shapesJournalURL, let data = try? JSONEncoder().encode(shapes) {
+                    try? data.write(to: shapesJournalURL, options: .atomic)
+                }
             }
         }
         shapeIDs[imageData] = id

@@ -1,0 +1,35 @@
+{
+  "captureFrame" : {
+    "height" : 200,
+    "width" : 320,
+    "x" : 0,
+    "y" : 0
+  },
+  "createdAt" : "2026-11-01T14:03:22Z",
+  "displays" : [
+    {
+      "frame" : {
+        "height" : 200,
+        "width" : 320,
+        "x" : 0,
+        "y" : 0
+      },
+      "id" : 1,
+      "isPrimary" : true,
+      "scale" : 2
+    }
+  ],
+  "droppedFrameCount" : 0,
+  "duration" : 2,
+  "fps" : 60,
+  "frameCount" : 60,
+  "scale" : 2,
+  "source" : {
+    "displayID" : 1,
+    "kind" : "display",
+    "name" : "Fixture display"
+  },
+  "version" : 1,
+  "videoHeight" : 400,
+  "videoWidth" : 640
+}

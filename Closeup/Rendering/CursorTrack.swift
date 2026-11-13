@@ -56,9 +56,6 @@ struct CursorTrack: Sendable {
         shapeIDs = shapeEvents.map { $0.shape ?? 0 }
     }
 
-    /// Times of every click (any button).
-    var clicks: [Double] { clickTimes }
-
     /// Smoothed position at `time` seconds, in points from the top-left of the captured area.
     func position(at time: Double) -> CGPoint {
         let x = max(0, time * Self.sampleRate)

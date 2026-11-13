@@ -3,3 +3,6 @@ DerivedData/
 xcuserdata/
 *.xcuserstate
 .DS_Store
+
+# Private notes, not part of the project
+before-after.md

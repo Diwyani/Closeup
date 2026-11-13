@@ -23,6 +23,39 @@ struct CursorLog: Codable {
     var events: [CursorEvent]
 }
 
+extension CursorLog {
+    /// Re-times raw events so t = 0 is the first video frame.
+    /// Events before the first frame collapse into one starting position and shape.
+    static func videoTimeline(
+        _ raw: [CursorLogger.RawEvent], videoStart: Double, videoEnd: Double
+    ) -> [CursorEvent] {
+        var events: [CursorEvent] = []
+        var positionAtStart: CGPoint?
+        var shapeAtStart: Int?
+
+        for event in raw {
+            let t = event.hostTime - videoStart
+            if t < 0 {
+                positionAtStart = event.position
+                if let shape = event.shape { shapeAtStart = shape }
+                continue
+            }
+            if event.hostTime > videoEnd { break }
+            events.append(CursorEvent(
+                t: t, x: event.position.x, y: event.position.y, type: event.type, shape: event.shape))
+        }
+
+        var start: [CursorEvent] = []
+        if let position = positionAtStart {
+            start.append(CursorEvent(t: 0, x: position.x, y: position.y, type: .move))
+            if let shape = shapeAtStart {
+                start.append(CursorEvent(t: 0, x: position.x, y: position.y, type: .shape, shape: shape))
+            }
+        }
+        return start + events
+    }
+}
+
 struct CursorShape: Codable, Equatable {
     var id: Int
     /// File name inside cursors/.

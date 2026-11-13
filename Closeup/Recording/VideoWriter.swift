@@ -16,6 +16,7 @@ final class VideoWriter: @unchecked Sendable {
         var duration: Double { endTime - firstFrameTime }
     }
 
+    private let url: URL
     private let assetWriter: AVAssetWriter
     private let input: AVAssetWriterInput
     private let adaptor: AVAssetWriterInputPixelBufferAdaptor
@@ -26,6 +27,11 @@ final class VideoWriter: @unchecked Sendable {
     private var frameCount = 0
     private var droppedFrameCount = 0
     private var isFinishing = false
+    /// Called once, on the capture queue, if the file fails while recording
+    /// (disk full, drive unplugged), so recording can stop right away
+    /// instead of carrying on with nothing being saved.
+    var onFailure: ((Error) -> Void)?
+    private var hasReportedFailure = false
 
     /// Safety net: in real-time mode AVAssetWriter keeps accepting frames even
     /// when the encoder falls behind, and every waiting frame is held in memory.
@@ -36,7 +42,12 @@ final class VideoWriter: @unchecked Sendable {
 
     init(url: URL, width: Int, height: Int, fps: Int, queue: DispatchQueue) throws {
         self.queue = queue
+        self.url = url
         assetWriter = try AVAssetWriter(outputURL: url, fileType: .mov)
+        // Write the file in one-second pieces. Without this the file only
+        // becomes playable at Stop, so a crash or power cut loses all of it;
+        // with it, everything up to the last piece survives.
+        assetWriter.movieFragmentInterval = CMTime(value: 1, timescale: 1)
 
         // HEVC rather than H.264: H.264's hardware encoder tops out around 4K,
         // and a 5K/6K display recorded at native size would fail.
@@ -73,12 +84,23 @@ final class VideoWriter: @unchecked Sendable {
     func append(_ sampleBuffer: CMSampleBuffer) {
         dispatchPrecondition(condition: .onQueue(queue))
         guard !isFinishing, let pixelBuffer = sampleBuffer.imageBuffer else { return }
+        // Once the file has failed (disk full, drive unplugged) nothing more can be written.
+        guard assetWriter.status == .writing else {
+            droppedFrameCount += 1
+            if !hasReportedFailure {
+                hasReportedFailure = true
+                Logger.recording.error("Video file failed while recording: \(String(describing: self.assetWriter.error), privacy: .public)")
+                onFailure?(assetWriter.error ?? RecordingError.writerFailed)
+            }
+            return
+        }
 
         let time = sampleBuffer.presentationTimeStamp
         if firstFrameTime == nil {
             // The video timeline starts at the first frame we actually got.
             assetWriter.startSession(atSourceTime: time)
             firstFrameTime = time
+            RecordingRecovery.noteStart(of: url, hostTime: time.seconds)
             Logger.recording.info("First frame received")
         }
         guard input.isReadyForMoreMediaData, time > (lastFrameTime ?? .negativeInfinity), !isOverMemoryBudget() else {
@@ -105,6 +127,13 @@ final class VideoWriter: @unchecked Sendable {
         return isDroppingForMemory
     }
 
+    #if CLOSEUP_TESTS
+    /// Tests only: puts the file in the state a full disk would.
+    func breakForTesting() {
+        queue.sync { assetWriter.cancelWriting() }
+    }
+    #endif
+
     /// Closes the file. `endTime` is the host-clock moment the user pressed stop.
     func finish(at endTime: Double) async throws -> Summary {
         try await withCheckedThrowingContinuation { continuation in
@@ -113,6 +142,13 @@ final class VideoWriter: @unchecked Sendable {
                 guard let firstFrameTime, let lastFrameTime else {
                     assetWriter.cancelWriting()
                     continuation.resume(throwing: RecordingError.noFramesCaptured)
+                    return
+                }
+                // If the file already failed while recording, say so. (Finishing
+                // a failed file is a programming error that would crash the app.)
+                guard assetWriter.status == .writing else {
+                    Logger.recording.error("Writer failed while recording: \(String(describing: self.assetWriter.error), privacy: .public)")
+                    continuation.resume(throwing: assetWriter.error ?? RecordingError.writerFailed)
                     return
                 }
                 input.markAsFinished()
@@ -138,13 +174,17 @@ final class VideoWriter: @unchecked Sendable {
     }
 }
 
-enum RecordingError: LocalizedError {
+enum RecordingError: LocalizedError, Equatable {
     case noFramesCaptured
     case writerSetupFailed
     case writerFailed
     case noSourceSelected
     case cameraAccessDenied
     case microphoneAccessDenied
+    case cameraMissing
+    case microphoneMissing
+    /// Recording failed, but some files were captured and kept.
+    case partlySaved(reason: String, folder: String)
 
     var errorDescription: String? {
         switch self {
@@ -152,6 +192,12 @@ enum RecordingError: LocalizedError {
             "Closeup can't use the camera. Turn it on in System Settings → Privacy & Security → Camera, or pick “No camera”."
         case .microphoneAccessDenied:
             "Closeup can't use the microphone. Turn it on in System Settings → Privacy & Security → Microphone, or pick “No microphone”."
+        case .cameraMissing:
+            "The camera you chose isn't connected. Plug it in, or pick another camera or “No camera”."
+        case .microphoneMissing:
+            "The microphone you chose isn't connected. Plug it in, or pick another microphone or “No microphone”."
+        case .partlySaved(let reason, let folder):
+            "\(reason) What was captured is in “\(folder)” in your Movies/Closeup folder."
         case .noFramesCaptured: "No frames were captured."
         case .writerSetupFailed: "Couldn't set up the video file."
         case .writerFailed: "Couldn't finish writing the video file."

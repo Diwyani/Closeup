@@ -53,6 +53,7 @@ I review every pull request myself. I may ask for changes, and it can take a few
 
 Before you open a pull request, please check:
 
+- [ ] `./check.sh` ends with `RESULT: PASS` (it builds the app and runs every test; see [MAINTENANCE.md](MAINTENANCE.md)).
 - [ ] It builds with no errors or new warnings.
 - [ ] A new recording works: record, stop, and the editor opens.
 - [ ] An older recording still opens.
