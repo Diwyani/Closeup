@@ -146,7 +146,7 @@ final class RecordingSession {
 
     /// Re-times raw events so t = 0 is the first video frame.
     /// Events before the first frame collapse into one starting position and shape.
-    private static func videoTimeline(
+    static func videoTimeline(
         _ raw: [CursorLogger.RawEvent], videoStart: Double, videoEnd: Double
     ) -> [CursorEvent] {
         var events: [CursorEvent] = []

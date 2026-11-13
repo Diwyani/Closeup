@@ -8,18 +8,45 @@
 
 /* Begin PBXFileReference section */
 		A1000000000000000000AA01 /* Closeup.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Closeup.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1000000000000000000BB01 /* CloseupTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CloseupTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		A1000000000000000000BB02 /* Exceptions for "Closeup" folder in "CloseupTests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				App/CloseupApp.swift,
+				Assets.xcassets,
+			);
+			target = A1000000000000000000BB06 /* CloseupTests */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		A1000000000000000000AA02 /* Closeup */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A1000000000000000000BB02 /* Exceptions for "Closeup" folder in "CloseupTests" target */,
+			);
 			path = Closeup;
+			sourceTree = "<group>";
+		};
+		A1000000000000000000BB03 /* CloseupTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = CloseupTests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		A1000000000000000000AA03 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1000000000000000000BB04 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -33,6 +60,7 @@
 			isa = PBXGroup;
 			children = (
 				A1000000000000000000AA02 /* Closeup */,
+				A1000000000000000000BB03 /* CloseupTests */,
 				A1000000000000000000AA05 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +69,7 @@
 			isa = PBXGroup;
 			children = (
 				A1000000000000000000AA01 /* Closeup.app */,
+				A1000000000000000000BB01 /* CloseupTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -70,6 +99,29 @@
 			productReference = A1000000000000000000AA01 /* Closeup.app */;
 			productType = "com.apple.product-type.application";
 		};
+		A1000000000000000000BB06 /* CloseupTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A1000000000000000000BB07 /* Build configuration list for PBXNativeTarget "CloseupTests" */;
+			buildPhases = (
+				A1000000000000000000BB08 /* Sources */,
+				A1000000000000000000BB04 /* Frameworks */,
+				A1000000000000000000BB09 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A1000000000000000000AA02 /* Closeup */,
+				A1000000000000000000BB03 /* CloseupTests */,
+			);
+			name = CloseupTests;
+			packageProductDependencies = (
+			);
+			productName = CloseupTests;
+			productReference = A1000000000000000000BB01 /* CloseupTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -82,6 +134,9 @@
 				TargetAttributes = {
 					A1000000000000000000AA06 = {
 						CreatedOnToolsVersion = 26.0;
+					};
+					A1000000000000000000BB06 = {
+						CreatedOnToolsVersion = 27.0;
 					};
 				};
 			};
@@ -100,6 +155,7 @@
 			projectRoot = "";
 			targets = (
 				A1000000000000000000AA06 /* Closeup */,
+				A1000000000000000000BB06 /* CloseupTests */,
 			);
 		};
 /* End PBXProject section */
@@ -112,10 +168,24 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A1000000000000000000BB09 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		A1000000000000000000AA08 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1000000000000000000BB08 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -286,6 +356,42 @@
 			};
 			name = Release;
 		};
+		A1000000000000000000BB0A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = app.closeup.CloseupTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) CLOSEUP_TESTS";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		A1000000000000000000BB0B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = app.closeup.CloseupTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) CLOSEUP_TESTS";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -303,6 +409,15 @@
 			buildConfigurations = (
 				A1000000000000000000AA0C /* Debug */,
 				A1000000000000000000AA0D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A1000000000000000000BB07 /* Build configuration list for PBXNativeTarget "CloseupTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1000000000000000000BB0A /* Debug */,
+				A1000000000000000000BB0B /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
