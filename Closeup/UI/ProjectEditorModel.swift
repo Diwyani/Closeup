@@ -685,6 +685,10 @@ final class ProjectEditorModel {
         let project = project
         let metadata = metadata
         var compositor = liveCompositor.current
+        // Always export with the settings as they are right now. (The preview's
+        // copy isn't refreshed by trim or volume changes, so on its own it
+        // could be one change behind.)
+        compositor.style = style
         compositor.timeMap = TimeMap(edits: currentTimeEdits(), duration: duration)
         let resolution = resolution
         exportTask = Task {
