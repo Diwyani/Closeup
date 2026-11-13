@@ -56,7 +56,7 @@ struct MainWindowView: View {
     }
 }
 
-/// The Phase 1 recorder screen.
+/// The recorder screen: pick what to record, then press Record.
 struct RecorderView: View {
     @Environment(AppState.self) private var appState
 

@@ -85,7 +85,7 @@ struct RecordingProject: Identifiable, Hashable {
         return RecordingProject(folder: folder)
     }
 
-    /// All projects in the library, newest first. (Used by the Phase 2 project list.)
+    /// All projects in the library, newest first, for the sidebar.
     static func all() -> [RecordingProject] {
         let folders = (try? FileManager.default.contentsOfDirectory(
             at: libraryFolder, includingPropertiesForKeys: [.creationDateKey], options: .skipsHiddenFiles)) ?? []

@@ -52,7 +52,9 @@ final class CameraPreview: @unchecked Sendable {
 
     /// Called from the camera queue with each frame.
     nonisolated func display(_ frame: CVPixelBuffer) {
-        guard let surface = CVPixelBufferGetIOSurface(frame)?.takeUnretainedValue() else { return }
+        // An IOSurface is safe to hand to another thread; the compiler just can't tell.
+        guard let ioSurface = CVPixelBufferGetIOSurface(frame)?.takeUnretainedValue() else { return }
+        nonisolated(unsafe) let surface = ioSurface
         DispatchQueue.main.async { [self] in
             view?.image.contents = surface
         }
