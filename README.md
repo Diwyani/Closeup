@@ -11,6 +11,7 @@ Smooth auto zoom, a tidy cursor, your face, captions. No editing skills needed.<
   <a href="https://youtu.be/JUKBqO_KQok">Video</a> ·
   <a href="INSTALL.md">Install guide</a> ·
   <a href="#run-it">Run it</a> ·
+  <a href="#update-it"><b>Update</b></a> ·
   <a href="#how-to-use">How to use</a> ·
   <a href="#how-it-decides">How it decides</a> ·
   <a href="#limitations">Limitations</a> ·
@@ -46,7 +47,7 @@ Smooth auto zoom, a tidy cursor, your face, captions. No editing skills needed.<
 
 Everything runs on your Mac. No account, no uploads, no third-party code: it's built only on Apple's frameworks.
 
-**Updates:** Closeup checks GitHub once a day for the date of the latest change (that's the only thing it sends or receives) and shows a banner when there's a new version. Click **Update**, or double-click **Update Closeup** in the folder, and it rebuilds and reinstalls itself with your Apple ID. No Xcode window needed.
+**Updates:** one click, no Xcode window. See [Update it](#update-it).
 
 ## Requirements
 
@@ -64,6 +65,22 @@ Everything runs on your Mac. No account, no uploads, no third-party code: it's b
 2. Open `Closeup.xcodeproj` in Xcode.
 3. Select the **Closeup** target → **Signing & Capabilities** → choose your own **Team**. A free Apple ID works.
 4. Press **⌘R** to build and run.
+
+## Update it
+
+**Already have Closeup from before 13 November 2026?** Update once by hand, and it updates itself from then on:
+
+1. Download the latest ZIP: **Code → Download ZIP** on this page, and unzip it.
+2. Double-click **Update Closeup** in the folder. The first time, macOS may say it's from the internet: right-click it → **Open** → **Open**.
+3. A Terminal window downloads, builds and installs the new version with your Apple ID, then reopens Closeup. It takes a minute or two.
+
+**From then on:** when there's a new version, a banner at the top of Closeup says *"A new version of Closeup is available."* Click **Update**. Or choose **Check for Updates** from the menu bar icon any time.
+
+Good to know:
+- **No Xcode window opens.** Xcode just needs to stay installed, signed in under Xcode → Settings → Accounts.
+- **Your recordings are safe.** They live in `~/Movies/Closeup` and are never touched.
+- **What the check sends:** once a day, Closeup asks GitHub for the date of the latest change. Nothing else is sent or received.
+- **New here?** The same **Update Closeup** file also does a first install, once Xcode is installed and signed in. See the [install guide](INSTALL.md).
 
 ## Limitations
 
